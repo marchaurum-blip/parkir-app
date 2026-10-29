@@ -1,21 +1,25 @@
-// Hero 3D (Three.js - Continuous Cyclic Rotating Groove Pallets + GT Coupe):
-// Setiap palet persegi memiliki pahatan busur cekung 90 derajat di sudut lokalnya.
-// Gerakan mobil dan putaran keempat palet dikendalikan oleh fase sudut siklis kontinu
-// (modulo 2*PI dengan rotasi 0 -> PI -> 2*PI yang ekuivalen dengan 0), sehingga
-// animasi berjalan 100% siklis (seamless infinite loop) tanpa pernah melompat/mengulang kasar.
+// Hero 3D (Three.js - Studio-Grade Lighting, Camera Angle, & Cyclic Rotating Groove Pallets):
+// Disempurnakan mengikuti referensi video:
+// 1. Kamera FOV 25 derajat dengan sudut pandang rendah-miring & orientasi berlian (-0.70 rad)
+//    sehingga sudut lancip palet kanan menunjuk tepat ke pusat lingkaran.
+// 2. Pencahayaan sinematik: sinar matahari sudut rendah dari kanan-atas (menghasilkan bayangan
+//    panjang mobil ke kiri-bawah & kontras tegas di dinding parit cekung) + gradasi lantai lavender.
+// 3. Custom PBR shader injection (onBeforeCompile) untuk Crevice AO, Spotlight Falloff,
+//    dan pendaran neon ungu-magenta mulus di celah bawah palet yang terangkat/berputar.
+// 4. Animasi 100% siklis kontinu (seamless infinite loop).
 // Dibuat dengan bantuan Antigravity CLI.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
-const S = 2.86;        // Ukuran sisi tiap palet persegi
-const GAP = 0.024;     // Celah nat antar palet
+const S = 2.90;        // Ukuran sisi tiap palet persegi
+const GAP = 0.022;     // Celah nat tipis antar palet
 const STEP = S + GAP;  // Jarak antar pusat palet
-const H = 0.62;        // Ketebalan palet
-const R_ARC = 1.92;    // Jari-jari busur cekung dari sudut palet
-const GW = 0.52;       // Setengah lebar parit cekung
-const GD = 0.34;       // Kedalaman parit cekung
+const H = 0.68;        // Ketebalan palet
+const R_ARC = 1.94;    // Jari-jari busur cekung dari sudut palet
+const GW = 0.50;       // Setengah lebar parit cekung
+const GD = 0.36;       // Kedalaman parit cekung
 const TAU = Math.PI * 2;
 
 function smoothstep(edge0, edge1, x) {
@@ -23,7 +27,7 @@ function smoothstep(edge0, edge1, x) {
   return t * t * (3 - 2 * t);
 }
 
-// Tekstur permukaan keramik berbintik halus (speckled terrazzo)
+// Tekstur keramik berbintik halus (speckled terrazzo)
 function buatTeksturKeramik() {
   const c = document.createElement('canvas');
   c.width = c.height = 512;
@@ -31,11 +35,11 @@ function buatTeksturKeramik() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 512, 512);
 
-  for (let i = 0; i < 420; i++) {
+  for (let i = 0; i < 480; i++) {
     const x = Math.random() * 512;
     const y = Math.random() * 512;
-    const r = 0.7 + Math.random() * 1.3;
-    ctx.fillStyle = i % 3 === 0 ? 'rgba(65, 50, 105, 0.42)' : 'rgba(110, 95, 150, 0.28)';
+    const r = 0.6 + Math.random() * 1.3;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(58, 44, 98, 0.45)' : 'rgba(105, 90, 148, 0.30)';
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -53,19 +57,21 @@ function kedalamanParitLokal(x, z) {
   const distArc = Math.abs(Math.hypot(x - cx, z - cz) - R_ARC);
   if (distArc >= GW) return 0;
   const nd = distArc / GW;
-  const prof = (1 - nd * nd) * smoothstep(1.0, 0.76, nd);
+  // Profil U-groove cekung yang dalam dengan bibir bevel mulus
+  const prof = (1 - nd * nd) * smoothstep(1.0, 0.74, nd);
   return -GD * prof;
 }
 
+// Geometri 3D palet persegi dengan atribut warna vertex untuk menyimpan faktor AO & kedalaman lokal
 function buatGeometriPalet(hasGroove = true) {
-  const segXZ = hasGroove ? 84 : 4;
-  const segY = hasGroove ? 10 : 1;
+  const segXZ = hasGroove ? 88 : 6;
+  const segY = hasGroove ? 10 : 2;
   const geo = new THREE.BoxGeometry(S, H, S, segXZ, segY, segXZ);
 
   const pos = geo.attributes.position;
   const norm = geo.attributes.normal;
   const halfH = H / 2;
-  const bevelEdge = 0.032;
+  const bevelEdge = 0.030;
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -77,7 +83,7 @@ function buatGeometriPalet(hasGroove = true) {
 
     const dxEdge = Math.max(0, Math.abs(x) - (S / 2 - bevelEdge)) / bevelEdge;
     const dzEdge = Math.max(0, Math.abs(z) - (S / 2 - bevelEdge)) / bevelEdge;
-    const edgeDrop = -0.015 * (dxEdge * dxEdge + dzEdge * dzEdge);
+    const edgeDrop = -0.014 * (dxEdge * dxEdge + dzEdge * dzEdge);
 
     const gDrop = hasGroove ? kedalamanParitLokal(x, z) : 0;
 
@@ -86,12 +92,13 @@ function buatGeometriPalet(hasGroove = true) {
     pos.setY(i, newY);
 
     if (ny0 > 0.5 && hasGroove) {
-      const eps = 0.012;
+      const eps = 0.010;
       const hC = gDrop + edgeDrop;
       const hX = kedalamanParitLokal(x + eps, z) + edgeDrop;
       const hZ = kedalamanParitLokal(x, z + eps) + edgeDrop;
-      const gx = (hC - hX) / eps;
-      const gz = (hC - hZ) / eps;
+      // Penguatan gradien 1.35x agar transisi cahaya-bayangan di dinding parit setegas render Blender
+      const gx = ((hC - hX) / eps) * 1.35;
+      const gz = ((hC - hZ) / eps) * 1.35;
       const len = Math.hypot(gx, 1.0, gz);
       norm.setXYZ(i, gx / len, 1.0 / len, gz / len);
     } else {
@@ -104,11 +111,121 @@ function buatGeometriPalet(hasGroove = true) {
   return geo;
 }
 
+// Material PBR kustom untuk palet: menyuntikkan Spotlight Falloff, Crevice AO,
+// dan pendaran neon ungu-magenta di celah bawah palet tanpa merusak warna putih bersih permukaan atas!
+function buatMaterialPalet(texKeramik, neonUniforms) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xfffcff,
+    map: texKeramik,
+    roughness: 0.46,
+    metalness: 0.03,
+  });
+
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uCarWorldPos = neonUniforms.uCarWorldPos;
+    shader.uniforms.uNeonPos0 = neonUniforms.uNeonPos0;
+    shader.uniforms.uNeonPos1 = neonUniforms.uNeonPos1;
+    shader.uniforms.uNeonStr0 = neonUniforms.uNeonStr0;
+    shader.uniforms.uNeonStr1 = neonUniforms.uNeonStr1;
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        /* glsl */ `
+        #include <common>
+        varying vec3 vWorldPosition;
+        varying vec3 vLocalPosition;
+        varying vec3 vOrigNormal;
+        `
+      )
+      .replace(
+        '#include <begin_vertex>',
+        /* glsl */ `
+        #include <begin_vertex>
+        vLocalPosition = position;
+        vOrigNormal = normal;
+        vec4 wpCustom = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = wpCustom.xyz;
+        `
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        /* glsl */ `
+        #include <common>
+        varying vec3 vWorldPosition;
+        varying vec3 vLocalPosition;
+        varying vec3 vOrigNormal;
+        uniform vec3 uCarWorldPos;
+        uniform vec3 uNeonPos0;
+        uniform vec3 uNeonPos1;
+        uniform float uNeonStr0;
+        uniform float uNeonStr1;
+        `
+      )
+      .replace(
+        '#include <dithering_fragment>',
+        /* glsl */ `
+        // 1. Gradasi pencahayaan sinematik (Spotlight Falloff):
+        // Terang hangat di area kanan-atas menuju tengah lingkaran, teduh lavender di kiri & bawah
+        vec2 spotCenter = vec2(3.2, -1.6);
+        float distSpot = length((vWorldPosition.xz - spotCenter) * vec2(0.42, 0.58));
+        float vignette = smoothstep(8.2, 1.2, distSpot);
+        vec3 lavenderShadowTint = vec3(0.76, 0.72, 0.90);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb * lavenderShadowTint, gl_FragColor.rgb * vec3(1.03, 1.00, 0.99), 0.30 + 0.70 * vignette);
+
+        // 2. Kontras kedalaman parit cekung (Crevice AO & lavender inner shadow):
+        float grooveDepthFactor = clamp((-vLocalPosition.y) / 0.36, 0.0, 1.0);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, gl_FragColor.rgb * vec3(0.84, 0.80, 0.95), grooveDepthFactor * 0.45);
+
+        // 3. Pantulan emas hangat dari bodi mobil ke dinding parit di dekatnya:
+        float dCar = length(vWorldPosition - uCarWorldPos);
+        float carBounce = exp(-dCar * 2.1) * 0.28 * (0.3 + 0.7 * grooveDepthFactor);
+        gl_FragColor.rgb += vec3(1.0, 0.75, 0.28) * carBounce;
+
+        // 4. Pendaran cahaya NEON UNGU-MAGENTA di dinding samping bawah palet yang terangkat
+        //    serta pantulan neon lembut di permukaan palet tetangga di dekat celah bawah:
+        float dN0 = length(vWorldPosition.xz - uNeonPos0.xz);
+        float dN1 = length(vWorldPosition.xz - uNeonPos1.xz);
+
+        // Dinding samping palet (abs(vOrigNormal.y) < 0.5) bagian bawah menyala neon tajam saat terangkat
+        float isSideWall = step(abs(vOrigNormal.y), 0.5);
+        float bottomMask = smoothstep(0.05, -0.26, vLocalPosition.y);
+        float raisedMask = smoothstep(0.02, 0.16, vWorldPosition.y + 0.18);
+
+        float sideNeon0 = isSideWall * bottomMask * raisedMask * exp(-dN0 * 0.9) * uNeonStr0;
+        float sideNeon1 = isSideWall * bottomMask * raisedMask * exp(-dN1 * 0.9) * uNeonStr1;
+
+        // Pantulan cahaya neon di lantai sekitar celah bawah palet yang sedang terangkat (y dekat permukaan lantai <= 0.05)
+        float floorMask = smoothstep(0.18, -0.02, vWorldPosition.y);
+        float ringGlow0 = floorMask * exp(-abs(dN0 - 1.35) * 2.2) * uNeonStr0 * 0.85;
+        float ringGlow1 = floorMask * exp(-abs(dN1 - 1.35) * 2.2) * uNeonStr1 * 0.85;
+
+        float totalNeon = clamp(sideNeon0 + sideNeon1 + ringGlow0 + ringGlow1, 0.0, 1.6);
+        vec3 colViolet  = vec3(0.48, 0.16, 0.98);
+        vec3 colMagenta = vec3(0.98, 0.18, 0.92);
+        vec3 colHotPink = vec3(1.00, 0.72, 0.99);
+        vec3 neonCol = mix(colViolet, colMagenta, clamp(totalNeon * 0.75, 0.0, 1.0));
+
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, neonCol, clamp(totalNeon * 0.78, 0.0, 0.88));
+        float hotCore = clamp((sideNeon0 + sideNeon1) * 1.15, 0.0, 0.95);
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, colHotPink, hotCore);
+
+        #include <dithering_fragment>
+        `
+      );
+  };
+
+  return mat;
+}
+
+// Mobil konsep GT Coupe 3D dengan proporsi sleek & kilau emas-champagne seperti koin referensi
 function buatMobilGT() {
   const root = new THREE.Group();
 
   const matBody = new THREE.MeshPhysicalMaterial({
-    color: 0xf5c24c,
+    color: 0xfad165,
     metalness: 0.78,
     roughness: 0.14,
     clearcoat: 1.0,
@@ -139,7 +256,7 @@ function buatMobilGT() {
   s.bezierCurveTo(0.88, -0.43, 1.06, -0.32, 1.06, 0.0);
 
   const geoHull = new THREE.ExtrudeGeometry(s, {
-    depth: 0.13,
+    depth: 0.14,
     bevelEnabled: true,
     bevelSegments: 12,
     steps: 1,
@@ -149,7 +266,7 @@ function buatMobilGT() {
   geoHull.rotateX(Math.PI / 2);
   geoHull.center();
   const hull = new THREE.Mesh(geoHull, matBody);
-  hull.position.y = 0.23;
+  hull.position.y = 0.24;
   hull.castShadow = true;
   hull.receiveShadow = true;
   root.add(hull);
@@ -173,7 +290,7 @@ function buatMobilGT() {
   geoCabin.rotateX(Math.PI / 2);
   geoCabin.center();
   const cabin = new THREE.Mesh(geoCabin, matGlass);
-  cabin.position.set(-0.14, 0.38, 0);
+  cabin.position.set(-0.14, 0.39, 0);
   cabin.castShadow = true;
   root.add(cabin);
 
@@ -196,17 +313,18 @@ function buatMobilGT() {
   geoRoof.rotateX(Math.PI / 2);
   geoRoof.center();
   const roof = new THREE.Mesh(geoRoof, matBody);
-  roof.position.set(-0.22, 0.48, 0);
+  roof.position.set(-0.22, 0.49, 0);
+  roof.castShadow = true;
   root.add(roof);
 
   for (const z of [-0.28, 0.28]) {
     const hl = new THREE.Mesh(new RoundedBoxGeometry(0.16, 0.04, 0.12, 2, 0.015), matHeadlight);
-    hl.position.set(0.98, 0.24, z);
+    hl.position.set(0.98, 0.25, z);
     hl.rotation.y = z > 0 ? -0.32 : 0.32;
     root.add(hl);
   }
   const tl = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.045, 0.66, 2, 0.015), matTaillight);
-  tl.position.set(-1.07, 0.26, 0);
+  tl.position.set(-1.07, 0.27, 0);
   root.add(tl);
 
   const geoTire = new THREE.CylinderGeometry(0.19, 0.19, 0.14, 24);
@@ -216,6 +334,7 @@ function buatMobilGT() {
     for (const z of [-0.45, 0.45]) {
       const w = new THREE.Mesh(geoTire, matCarbon);
       w.position.set(x, 0.19, z);
+      w.castShadow = true;
       root.add(w);
       wheels.push(w);
     }
@@ -239,57 +358,69 @@ export default function Hero() {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.02;
+    renderer.toneMappingExposure = 1.04;
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xd5cef0);
+    scene.background = new THREE.Color(0xc5bde4);
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.42;
+    scene.environmentIntensity = 0.38;
 
-    const camera = new THREE.PerspectiveCamera(32, w / h, 0.1, 100);
-    const camBase = new THREE.Vector3(0.35, 8.6, 5.8);
-    const lookTarget = new THREE.Vector3(0.85, -0.15, 0.05);
+    // 1. ANGLE KAMERA SINEMATIK (FOV 25 derajat, lebih rendah & miring seperti g02.jpg, g04.jpg, g08.jpg)
+    // Menghasilkan foreshortening elips yang elegan pada bulatan cekung
+    const camera = new THREE.PerspectiveCamera(25, w / h, 0.1, 100);
+    const camBase = new THREE.Vector3(0.05, 8.3, 8.1);
+    const lookTarget = new THREE.Vector3(0.65, -0.20, 0.05);
     camera.position.copy(camBase);
     camera.lookAt(lookTarget);
 
-    const hemi = new THREE.HemisphereLight(0xe2dcf8, 0x8e82be, 0.88);
+    // 2. PENCAHAYAAN DRAMATIS:
+    // Ambient sejuk lavender + Sinar matahari hangat bersudut rendah dari kanan-atas/belakang
+    // sehingga menjatuhkan bayangan memanjang ke arah kiri-bawah persis seperti referensi!
+    const hemi = new THREE.HemisphereLight(0xd8d0f5, 0x7e72b5, 0.72);
     scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xfff4ea, 3.1);
-    sun.position.set(8.5, 6.2, -5.5);
-    sun.target.position.set(2.0, 0, 0);
+    const sun = new THREE.DirectionalLight(0xfff5eb, 3.6);
+    sun.position.set(10.5, 4.1, 1.8);
+    sun.target.position.set(1.8, 0, 0.2);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 2;
     sun.shadow.camera.far = 28;
-    const dCam = 9.5;
+    const dCam = 9.0;
     sun.shadow.camera.left = -dCam;
     sun.shadow.camera.right = dCam;
     sun.shadow.camera.top = dCam;
     sun.shadow.camera.bottom = -dCam;
-    sun.shadow.bias = -0.0005;
-    sun.shadow.normalBias = 0.02;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.018;
     scene.add(sun, sun.target);
 
+    // 3. ORIENTASI BERLIAN (DIAMOND ORIENTATION):
+    // Diputar -0.72 rad (~-41 derajat) sehingga garis nat berjalan dari kiri-atas ke kanan-bawah (\)
+    // dan sudut lancip palet kanan menunjuk tepat ke pusat lingkaran di sebelah kiri!
     const worldGroup = new THREE.Group();
-    worldGroup.position.set(2.20, 0, 0.10);
-    worldGroup.rotation.y = -0.58;
+    worldGroup.position.set(2.38, 0, 0.15);
+    worldGroup.rotation.y = -0.72;
     scene.add(worldGroup);
 
+    const neonUniforms = {
+      uCarWorldPos: { value: new THREE.Vector3() },
+      uNeonPos0: { value: new THREE.Vector3() },
+      uNeonPos1: { value: new THREE.Vector3() },
+      uNeonStr0: { value: 0.0 },
+      uNeonStr1: { value: 0.0 },
+    };
+
     const texKeramik = buatTeksturKeramik();
-    const matPallet = new THREE.MeshStandardMaterial({
-      color: 0xf7f4fc,
-      map: texKeramik,
-      roughness: 0.52,
-      metalness: 0.04,
-    });
+    const matPallet = buatMaterialPalet(texKeramik, neonUniforms);
 
     const geoGrooved = buatGeometriPalet(true);
     const geoFlat = buatGeometriPalet(false);
 
+    // Rongga dasar neon ungu-magenta di bawah palet utama
     const matNeonFloor = new THREE.MeshBasicMaterial({ color: 0xd926ff });
     const neonBase = new THREE.Mesh(new THREE.PlaneGeometry(STEP * 3.2, STEP * 3.2), matNeonFloor);
     neonBase.rotation.x = -Math.PI / 2;
@@ -321,19 +452,6 @@ export default function Hero() {
         mesh.receiveShadow = true;
         pivot.add(mesh);
 
-        if (hasGroove) {
-          const matRimNeon = new THREE.MeshBasicMaterial({ color: 0xe62eff });
-          const neonSkirt = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.08, S - 0.02), matRimNeon);
-          neonSkirt.position.y = -H + 0.05;
-          pivot.add(neonSkirt);
-
-          const pLight = new THREE.PointLight(0xc81eff, 0, 4.5, 1.8);
-          pLight.position.set(0, -H * 0.4, 0);
-          pivot.add(pLight);
-          pivot.userData.pLight = pLight;
-          pivot.userData.neonSkirt = neonSkirt;
-        }
-
         pivot.rotation.y = baseRot;
         pivot.userData.baseRot = baseRot;
         worldGroup.add(pivot);
@@ -344,10 +462,6 @@ export default function Hero() {
 
     const mobil = buatMobilGT();
     worldGroup.add(mobil);
-
-    const carGlow = new THREE.PointLight(0xffb830, 1.4, 2.2, 2.0);
-    mobil.add(carGlow);
-    carGlow.position.set(0, 0.35, 0);
 
     const mouse = { x: 0, y: 0 };
     const onMove = (e) => {
@@ -372,52 +486,37 @@ export default function Hero() {
     const animasikanPalet = (key, liftAmount, extraRotY, tiltX = 0, tiltZ = 0) => {
       const p = pallets[key];
       if (!p) return;
-      p.position.y = liftAmount * 0.38;
+      p.position.y = liftAmount * 0.34;
       p.rotation.set(tiltX, p.userData.baseRot + extraRotY, tiltZ);
-      if (p.userData.pLight) {
-        const glow = Math.min(1, liftAmount * 2.2 + Math.abs(tiltX) * 3.0);
-        p.userData.pLight.intensity = glow * 9.0;
-        p.userData.neonSkirt.visible = glow > 0.02;
-      }
     };
 
-    // Daftar 4 palet utama beserta sudut kuadrannya di lingkaran:
-    // Setiap palet terangkat dan berputar 360 derajat (0 -> PI -> 2*PI) secara mulus
-    // tepat ketika mobil berada di belahan lingkaran seberangnya!
-    // Karena 2*PI secara geometris identik dengan 0, maka saat palet mendarat kembali,
-    // tidak pernah ada lompatan/reset sama sekali (100% siklis kontinu!).
     const RING_PALLETS = [
       { key: '0.5,0.5',   quadAngle: 0.25 * Math.PI, tiltSignX: -1, tiltSignZ: -1 },
-      { key: '-0.5,0.5',  quadAngle: 0.75 * Math.PI, tiltSignX:  1, tiltSignZ:  1 },
-      { key: '-0.5,-0.5', quadAngle: 1.25 * Math.PI, tiltSignX:  1, tiltSignZ: -1 },
+            { key: '-0.5,-0.5', quadAngle: 1.25 * Math.PI, tiltSignX:  1, tiltSignZ: -1 },
       { key: '0.5,-0.5',  quadAngle: 1.75 * Math.PI, tiltSignX: -1, tiltSignZ:  1 },
     ];
 
+    const tmpVec = new THREE.Vector3();
     let raf;
     const loop = () => {
       const t = FIX ?? clock.getElapsedTime();
 
-      // 1. Sudut mobil bertambah secara linear & kontinu tanpa pemotongan if/else (tidak pernah melompat!)
-      // Kecepatan: 1 putaran penuh setiap 8 detik
+      // 1. Sudut mobil bertambah linear & kontinu (100% siklis tanpa lompatan)
       const omega = TAU / 8.0;
       const carAngle = t * omega + 0.65 * Math.PI;
 
-      // 2. Evaluasi gelombang siklis untuk keempat palet utama
+      // 2. Evaluasi gelombang putaran keempat palet utama + kumpulkan 2 sumber neon terkuat
+      const activeNeons = [];
       for (const item of RING_PALLETS) {
-        // Selisih fase sudut antara mobil dan pusat kuadran palet (selalu di [0 .. 2*PI))
         const phase = (((carAngle - item.quadAngle) % TAU) + TAU) % TAU;
-
-        // Ketika phase berada di jendela [0.65*PI .. 1.55*PI], mobil sedang berada di seberang palet ini.
-        // Palet ini terangkat mulus, berputar 0 -> PI (membentuk S-curve/C-shape) -> 2*PI (kembali bulatan), lalu mendarat!
         const winStart = 0.65 * Math.PI;
         const winEnd = 1.55 * Math.PI;
 
         if (phase > winStart && phase < winEnd) {
-          const u = (phase - winStart) / (winEnd - winStart); // 0 .. 1 kontinu
+          const u = (phase - winStart) / (winEnd - winStart);
           const s = Math.sin(u * Math.PI);
-          const lift = s * s; // C^1 smooth: mulai dari 0 dengan turunan 0, naik ke 1, kembali ke 0 dengan turunan 0
+          const lift = s * s;
 
-          // Putaran 2 tahap yang mulus dari 0 -> PI (tahan sebentar agar S-curve terlihat jelas) -> 2*PI:
           let rot = 0;
           if (u < 0.42) {
             rot = smoothstep(0.0, 0.42, u) * Math.PI;
@@ -427,28 +526,61 @@ export default function Hero() {
             rot = Math.PI + smoothstep(0.58, 1.0, u) * Math.PI;
           }
 
-          const tilt = Math.sin(u * TAU) * s * 0.16;
+          const tilt = Math.sin(u * TAU) * s * 0.14;
           animasikanPalet(item.key, lift, rot, tilt * item.tiltSignX, tilt * item.tiltSignZ);
+
+          const pObj = pallets[item.key];
+          pObj.getWorldPosition(tmpVec);
+          activeNeons.push({ pos: tmpVec.clone(), str: lift * 1.35 });
         } else {
-          animasikanPalet(item.key, 0, 0, 0, 0);
+          // Sedikit undakan halus (breathing step) pada palet kanan ('0.5,-0.5') seperti di g08.jpg
+          if (item.key === '0.5,-0.5') {
+            const edgeDist = Math.min(Math.abs(phase - winStart), Math.abs(phase - winEnd));
+            const subtleStep = smoothstep(0.0, 0.35, edgeDist) * 0.22;
+            animasikanPalet(item.key, subtleStep, 0, 0, 0);
+            const pObj = pallets[item.key];
+            pObj.getWorldPosition(tmpVec);
+            activeNeons.push({ pos: tmpVec.clone(), str: subtleStep * 1.4 });
+          } else {
+            animasikanPalet(item.key, 0, 0, 0, 0);
+          }
         }
       }
 
-      // 3. Posisi & orientasi mobil mengikuti bulatan cekung secara kontinu
+      activeNeons.sort((a, b) => b.str - a.str);
+      if (activeNeons[0]) {
+        neonUniforms.uNeonPos0.value.copy(activeNeons[0].pos);
+        neonUniforms.uNeonStr0.value = activeNeons[0].str;
+      } else {
+        neonUniforms.uNeonStr0.value = 0;
+      }
+      if (activeNeons[1]) {
+        neonUniforms.uNeonPos1.value.copy(activeNeons[1].pos);
+        neonUniforms.uNeonStr1.value = activeNeons[1].str;
+      } else {
+        neonUniforms.uNeonStr1.value = 0;
+      }
+
+      // 3. Posisi & orientasi mobil di dasar bulatan parit cekung
       const cxCar = Math.cos(carAngle) * R_ARC;
       const czCar = Math.sin(carAngle) * R_ARC;
 
-      mobil.position.set(cxCar, -GD + 0.02, czCar);
+      const curKey = `${cxCar >= 0 ? 0.5 : -0.5},${czCar >= 0 ? 0.5 : -0.5}`;
+      const curPallet = pallets[curKey];
+      const palletLift = curPallet ? curPallet.position.y : 0;
+
+      mobil.position.set(cxCar, palletLift - GD + 0.03, czCar);
       const tangentYaw = -carAngle - Math.PI / 2;
-      mobil.rotation.set(0, tangentYaw, 0.15);
+      mobil.rotation.set(0, tangentYaw, 0.16);
+      mobil.getWorldPosition(neonUniforms.uCarWorldPos.value);
 
       for (const wMesh of mobil.userData.wheels) {
         wMesh.rotation.z = -t * 7.0;
       }
 
       camera.position.set(
-        camBase.x + mouse.x * 0.7,
-        camBase.y - mouse.y * 0.45,
+        camBase.x + mouse.x * 0.65,
+        camBase.y - mouse.y * 0.40,
         camBase.z
       );
       camera.lookAt(lookTarget);
