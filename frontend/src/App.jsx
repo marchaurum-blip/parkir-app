@@ -4,6 +4,8 @@ import Masuk from './pages/Masuk.jsx';
 import Keluar from './pages/Keluar.jsx';
 import Master from './pages/Master.jsx';
 import Laporan from './pages/Laporan.jsx';
+import Hero from './Hero.jsx';
+import './style.css';
 
 const MENU = {
   petugas: ['Masuk', 'Keluar'],
@@ -29,23 +31,36 @@ export default function App() {
   const logout = () => { localStorage.clear(); setUser(null); setTab(null); };
 
   if (!user) return (
-    <form onSubmit={login} style={{ maxWidth: 300, margin: '80px auto' }}>
-      <h2>Login Parkir</h2>
-      <input placeholder="Username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} /><br />
-      <input type="password" placeholder="Password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} /><br />
-      <button>Masuk</button> <span style={{ color: 'red' }}>{err}</span>
-    </form>
+    <div className="hero">
+      <Hero />
+      <div className="nav"><span className="logo">Parkir Bebas</span></div>
+      <div className="hero-body">
+        <div className="hero-text">
+          <h1>Parkir lebih rapi, biaya lebih jelas.</h1>
+          <p>Catat kendaraan masuk dan keluar, hitung tarif otomatis, dan pantau pendapatan dalam satu aplikasi.</p>
+          <form onSubmit={login} className="login-card">
+            <input placeholder="Username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
+            <input type="password" placeholder="Password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
+            <button>Masuk</button> <span style={{ color: 'red' }}>{err}</span>
+          </form>
+        </div>
+      </div>
+    </div>
   );
 
   const menu = MENU[user.role];
   const cur = tab || menu[0];
   const Page = { Masuk, Keluar, Master, Laporan }[cur];
   return (
-    <div style={{ padding: 20 }}>
-      <b>{user.nama} ({user.role})</b>{' '}
-      {menu.map((m) => <button key={m} onClick={() => setTab(m)} disabled={m === cur}>{m}</button>)}
-      <button onClick={logout}>Logout</button>
-      <hr /><Page />
+    <div>
+      <div className="app-nav">
+        <span className="logo">Parkir Bebas</span>
+        {menu.map((m) => <button key={m} onClick={() => setTab(m)} disabled={m === cur}>{m}</button>)}
+        <span className="sp" />
+        <span>{user.nama} ({user.role})</span>
+        <button onClick={logout}>Logout</button>
+      </div>
+      <div className="app-main"><Page /></div>
     </div>
   );
 }

@@ -1,0 +1,28 @@
+/* Tampilan aplikasi parkir. Dibuat dengan bantuan Antigravity CLI. */
+:root { --ungu: #6d4aff; --teks: #1b1b2f; --abu: #6b6b80; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; color: var(--teks); background: #f6f4ff; }
+button { background: var(--ungu); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; margin: 2px; }
+button:disabled { background: #cfc7ff; cursor: default; }
+input, select { padding: 8px 10px; border: 1px solid #d9d4f5; border-radius: 8px; margin: 2px; }
+table { border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; margin-top: 8px; }
+td, th { border: 1px solid #ece9fb !important; padding: 6px 10px; }
+
+.hero { position: relative; min-height: 100vh; overflow: hidden; background: #d9d2f3; }
+.scene3d { position: absolute; inset: 0; }
+.nav, .hero-body { position: relative; z-index: 1; pointer-events: none; }
+.nav *, .hero-body * { pointer-events: auto; }
+.nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 8vw; }
+.logo { font-weight: 700; font-size: 20px; color: var(--ungu); }
+.hero-body { display: flex; align-items: center; justify-content: space-between; gap: 40px; padding: 4vh 8vw; flex-wrap: wrap; }
+.hero-text { max-width: 460px; }
+.hero-text h1 { color: #1a1445; font-family: Montserrat, system-ui, sans-serif; font-size: 52px; line-height: 1.1; margin: 0 0 16px; }
+.hero-text p { color: var(--abu); margin-bottom: 24px; }
+.login-card { background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 10px 40px #6d4aff22; max-width: 320px; }
+.login-card input { width: 100%; margin-bottom: 8px; }
+.art { width: min(480px, 90vw); filter: drop-shadow(0 20px 30px #6d4aff33); }
+
+.app-nav { display: flex; align-items: center; gap: 6px; padding: 12px 24px; background: #fff; box-shadow: 0 2px 12px #6d4aff14; }
+.app-nav .sp { flex: 1; }
+.app-main { padding: 24px; }
+@media print { .app-nav { display: none; } }
