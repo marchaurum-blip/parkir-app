@@ -96,10 +96,24 @@ app.post('/api/transaksi/masuk', auth('admin', 'petugas'), wrap(async (req, res)
     const [r] = await c.query('INSERT INTO tb_transaksi (id_kendaraan,waktu_masuk,id_tarif,id_user,id_area) VALUES (?,NOW(),?,?,?)',
       [k.id_kendaraan, tarif.id_tarif, req.user.id, id_area]);
     await c.query('UPDATE tb_area_parkir SET terisi=terisi+1 WHERE id_area=?', [id_area]);
-    await c.query('INSERT INTO tb_log_aktivitas (id_user,aktivitas) VALUES (?,?)', [req.user.id, `Masuk ${plat_nomor}`]);
+    await c.query('INSERT INTO tb_log_aktivitas (id_user,aktivitas) VALUES (?,?)', [req.user.id, 'Kendaraan Masuk']);
+    const [[struk]] = await c.query(
+      `SELECT t.id_parkir, t.waktu_masuk, k.plat_nomor, k.jenis_kendaraan, a.nama_area, tr.tarif_per_jam
+       FROM tb_transaksi t JOIN tb_kendaraan k USING(id_kendaraan) JOIN tb_area_parkir a USING(id_area) JOIN tb_tarif tr USING(id_tarif)
+       WHERE t.id_parkir=?`, [r.insertId]);
     await c.commit();
-    res.status(201).json({ id_parkir: r.insertId });
+    res.status(201).json(struk);
   } catch (e) { await c.rollback(); res.status(400).json({ error: e.message }); } finally { c.release(); }
+}));
+
+// Cari transaksi aktif lewat plat nomor atau kode parkir (id_parkir)
+app.get('/api/transaksi/cari', auth('admin', 'petugas'), wrap(async (req, res) => {
+  const q = req.query.q || '';
+  const [[t]] = await db.query(
+    `SELECT t.id_parkir FROM tb_transaksi t JOIN tb_kendaraan k USING(id_kendaraan)
+     WHERE t.status='masuk' AND (k.plat_nomor=? OR t.id_parkir=?) LIMIT 1`, [q, q]);
+  if (!t) return res.status(404).json({ error: 'Kendaraan tidak ditemukan / sudah keluar' });
+  res.json(t);
 }));
 
 // Biaya selalu dihitung di server: tarif x jam (dibulatkan ke atas, minimal 1 jam)
@@ -119,11 +133,13 @@ app.post('/api/transaksi/:id/keluar', auth('admin', 'petugas'), wrap(async (req,
   try {
     await c.beginTransaction();
     const t = await hitung(c, req.params.id);
-    await c.query("UPDATE tb_transaksi SET waktu_keluar=NOW(), durasi_jam=?, biaya_total=?, status='keluar' WHERE id_parkir=?", [t.durasi_jam, t.biaya_total, t.id_parkir]);
+    await c.query("UPDATE tb_transaksi SET waktu_keluar=NOW(), durasi_jam=?, biaya_total=?, status='keluar', id_user=? WHERE id_parkir=?", [t.durasi_jam, t.biaya_total, req.user.id, t.id_parkir]);
     await c.query('UPDATE tb_area_parkir SET terisi=GREATEST(terisi-1,0) WHERE id_area=?', [t.id_area]);
-    await c.query('INSERT INTO tb_log_aktivitas (id_user,aktivitas) VALUES (?,?)', [req.user.id, `Keluar ${t.plat_nomor}`]);
+    await c.query('INSERT INTO tb_log_aktivitas (id_user,aktivitas) VALUES (?,?)', [req.user.id, 'Kendaraan Keluar Selesai']);
+    const [[w]] = await c.query('SELECT waktu_keluar FROM tb_transaksi WHERE id_parkir=?', [t.id_parkir]);
     await c.commit();
-    res.json({ durasi_jam: t.durasi_jam, biaya_total: t.biaya_total });
+    res.json({ id_parkir: t.id_parkir, plat_nomor: t.plat_nomor, waktu_masuk: t.waktu_masuk, waktu_keluar: w.waktu_keluar,
+      tarif_per_jam: t.tarif_per_jam, durasi_jam: t.durasi_jam, biaya_total: t.biaya_total });
   } catch (e) { await c.rollback(); res.status(400).json({ error: e.message }); } finally { c.release(); }
 }));
 

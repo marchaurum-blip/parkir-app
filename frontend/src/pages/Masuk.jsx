@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import Struk from './Struk.jsx';
 
 export default function Masuk() {
   const [areas, setAreas] = useState([]);
   const [f, setF] = useState({ plat_nomor: '', jenis_kendaraan: 'motor', warna: '', pemilik: '', id_area: '' });
   const [msg, setMsg] = useState('');
+  const [struk, setStruk] = useState(null);
   const load = () => api('/area').then(setAreas);
   useEffect(() => { load(); }, []);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   const submit = async (e) => {
     e.preventDefault();
-    try { const r = await api('/transaksi/masuk', 'POST', f); setMsg('Tercatat, tiket #' + r.id_parkir); load(); }
+    try { const r = await api('/transaksi/masuk', 'POST', f); setStruk(r); setMsg('Tercatat'); load(); }
     catch (x) { setMsg(x.message); }
   };
   return (
@@ -28,6 +30,7 @@ export default function Masuk() {
         {areas.map((a) => <option key={a.id_area} value={a.id_area}>{a.nama_area} ({a.terisi}/{a.kapasitas})</option>)}
       </select>
       <button>Simpan</button> <b>{msg}</b>
+      {struk && <Struk jenis="masuk" data={struk} />}
     </form>
   );
 }
