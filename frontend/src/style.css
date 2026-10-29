@@ -1,28 +1,169 @@
-/* Tampilan aplikasi parkir. Dibuat dengan bantuan Antigravity CLI. */
-:root { --ungu: #6d4aff; --teks: #1b1b2f; --abu: #6b6b80; }
+/* Tampilan Aplikasi Parkir - terinspirasi referensi AICM 3D. Dibuat dengan bantuan Antigravity CLI. */
+:root {
+  --ungu: #6d4aff;
+  --teks: #16113a;
+  --abu: #4c4668;
+}
 * { box-sizing: border-box; }
-body { margin: 0; font-family: system-ui, sans-serif; color: var(--teks); background: #f6f4ff; }
-button { background: var(--ungu); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; margin: 2px; }
+body {
+  margin: 0;
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  color: var(--teks);
+  background: #d2cbe8;
+}
+button {
+  background: var(--ungu);
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 2px;
+}
 button:disabled { background: #cfc7ff; cursor: default; }
-input, select { padding: 8px 10px; border: 1px solid #d9d4f5; border-radius: 8px; margin: 2px; }
-table { border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; margin-top: 8px; }
-td, th { border: 1px solid #ece9fb !important; padding: 6px 10px; }
+input, select {
+  padding: 8px 11px;
+  border: 1px solid #d9d4f5;
+  border-radius: 8px;
+  margin: 2px;
+  font-size: 13px;
+}
+table {
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 10px;
+  box-shadow: 0 6px 20px rgba(22, 17, 58, 0.06);
+}
+td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
 
-.hero { position: relative; min-height: 100vh; overflow: hidden; background: #d9d2f3; }
-.scene3d { position: absolute; inset: 0; }
-.nav, .hero-body { position: relative; z-index: 1; pointer-events: none; }
-.nav *, .hero-body * { pointer-events: auto; }
-.nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 8vw; }
-.logo { font-weight: 700; font-size: 20px; color: var(--ungu); }
-.hero-body { display: flex; align-items: center; justify-content: space-between; gap: 40px; padding: 4vh 8vw; flex-wrap: wrap; }
-.hero-text { max-width: 460px; }
-.hero-text h1 { color: #1a1445; font-family: Montserrat, system-ui, sans-serif; font-size: 52px; line-height: 1.1; margin: 0 0 16px; }
-.hero-text p { color: var(--abu); margin-bottom: 24px; }
-.login-card { background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 10px 40px #6d4aff22; max-width: 320px; }
-.login-card input { width: 100%; margin-bottom: 8px; }
-.art { width: min(480px, 90vw); filter: drop-shadow(0 20px 30px #6d4aff33); }
+/* Landing Hero 3D */
+.hero {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #d2cbe8;
+}
+.scene3d {
+  position: absolute;
+  inset: 0;
+}
+.nav {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 5.5vw;
+  pointer-events: none;
+}
+.nav * { pointer-events: auto; }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: var(--teks);
+}
+.brand-gem {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, #4c1d95 0%, #9333ea 55%, #f472b6 100%);
+  box-shadow: 0 4px 12px rgba(147, 51, 234, 0.35);
+}
+.nav-links {
+  display: flex;
+  gap: 28px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--teks);
+}
+.nav-pill {
+  background: #ffffff;
+  color: var(--teks);
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(22, 17, 58, 0.08);
+}
 
-.app-nav { display: flex; align-items: center; gap: 6px; padding: 12px 24px; background: #fff; box-shadow: 0 2px 12px #6d4aff14; }
+.hero-body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - 96px);
+  padding: 0 5.5vw 6vh;
+  pointer-events: none;
+}
+.hero-text {
+  max-width: 390px;
+  pointer-events: auto;
+}
+.hero-text h1 {
+  color: #16113a;
+  font-size: clamp(34px, 4.1vw, 50px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin: 0 0 16px;
+}
+.hero-text p {
+  color: var(--abu);
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 0 0 22px;
+  max-width: 320px;
+}
+.login-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px);
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 12px 32px rgba(22, 17, 58, 0.08);
+  max-width: 350px;
+}
+.login-card input {
+  flex: 1 1 110px;
+  min-width: 0;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.92);
+}
+.login-card button {
+  margin: 0;
+  padding: 8px 16px;
+  background: #16113a;
+  border-radius: 9px;
+}
+.login-err {
+  width: 100%;
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* Dashboard setelah login */
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(109, 74, 255, 0.08);
+}
 .app-nav .sp { flex: 1; }
 .app-main { padding: 24px; }
 @media print { .app-nav { display: none; } }

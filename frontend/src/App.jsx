@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { api } from './api.js';
 import Masuk from './pages/Masuk.jsx';
 import Keluar from './pages/Keluar.jsx';
@@ -18,6 +18,7 @@ export default function App() {
   const [tab, setTab] = useState(null);
   const [f, setF] = useState({ username: '', password: '' });
   const [err, setErr] = useState('');
+  const userRef = useRef(null);
 
   const login = async (e) => {
     e.preventDefault();
@@ -33,15 +34,30 @@ export default function App() {
   if (!user) return (
     <div className="hero">
       <Hero />
-      <div className="nav"><span className="logo">Parkir Bebas</span></div>
+      <div className="nav">
+        <div className="brand">
+          <span className="brand-gem" />
+          <span>parkir</span>
+        </div>
+        <div className="nav-links">
+          <span>Check-In</span>
+          <span>Check-Out</span>
+          <span>Tarif & Area</span>
+          <span>SPK Paket 2</span>
+        </div>
+        <button type="button" className="nav-pill" onClick={() => userRef.current?.focus()}>
+          Get started
+        </button>
+      </div>
       <div className="hero-body">
         <div className="hero-text">
-          <h1>Parkir lebih rapi, biaya lebih jelas.</h1>
-          <p>Catat kendaraan masuk dan keluar, hitung tarif otomatis, dan pantau pendapatan dalam satu aplikasi.</p>
+          <h1>The Smarter,<br />Automated<br />Smart Parking<br />System</h1>
+          <p>Kelola kendaraan masuk & keluar, tarif per jam otomatis, dan rekapitulasi pendapatan real-time sesuai SPK.</p>
           <form onSubmit={login} className="login-card">
-            <input placeholder="Username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
+            <input ref={userRef} placeholder="Username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
             <input type="password" placeholder="Password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
-            <button>Masuk</button> <span style={{ color: 'red' }}>{err}</span>
+            <button>Masuk</button>
+            {err && <span className="login-err">{err}</span>}
           </form>
         </div>
       </div>
@@ -54,7 +70,10 @@ export default function App() {
   return (
     <div>
       <div className="app-nav">
-        <span className="logo">Parkir Bebas</span>
+        <div className="brand" style={{ marginRight: 12 }}>
+          <span className="brand-gem" />
+          <span>parkir</span>
+        </div>
         {menu.map((m) => <button key={m} onClick={() => setTab(m)} disabled={m === cur}>{m}</button>)}
         <span className="sp" />
         <span>{user.nama} ({user.role})</span>

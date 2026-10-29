@@ -1,80 +1,231 @@
-// Hero 3D penuh layar (Three.js): lantai berubin, cincin kaca buram yang bentuk jalurnya berubah-ubah,
-// lempengan putih dengan tepi neon (bloom), bayangan panjang, debu, dan mobil yang menyusuri jalur.
-// Dibuat dengan bantuan Antigravity CLI (Claude).
+// Hero 3D (Three.js - Modular Rotating Groove Pallets + GT Coupe):
+// Setiap palet persegi memiliki pahatan busur cekung 90 derajat (quarter-circle concave groove)
+// di sudut lokalnya. Saat 4 palet di tengah menghadap ke pusat, keempat busur membentuk bulatan
+// cekung utuh. Saat palet-palet terangkat dan berputar (disertai pendaran neon ungu-magenta
+// dari celah bawah dinding sampingnya), bulatan cekung ikut berubah menjadi huruf C atau S-curve.
+// Dibuat dengan bantuan Antigravity CLI.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
-const TUBE = 0.45;
+const S = 2.86;        // Ukuran sisi tiap palet persegi
+const GAP = 0.024;     // Celah nat antar palet
+const STEP = S + GAP;  // Jarak antar pusat palet
+const H = 0.62;        // Ketebalan palet (cukup tebal di bawah dasar parit agar bawahnya padat)
+const R_ARC = 1.92;    // Jari-jari busur cekung dari sudut palet
+const GW = 0.52;       // Setengah lebar parit cekung
+const GD = 0.34;       // Kedalaman parit cekung (H - GD = 0.28m tebal padat di bawah dasar parit)
 
-// Bentuk jalur: r = R(1 + a cos(m*theta + phi)), diskalakan sx/sz. Antar preset di-morph.
-const JALUR = [
-  { a: 0, m: 2, phi: 0, sx: 1, sz: 1 },
-  { a: 0.35, m: 2, phi: 0, sx: 1.25, sz: 0.8 },
-  { a: 0.3, m: 3, phi: 0.5, sx: 1, sz: 1 },
-  { a: 0.28, m: 2, phi: Math.PI / 2, sx: 0.8, sz: 1.2 },
-];
-// Tiap lempengan: [posisi, rotasi, skala] untuk tiap preset.
-const LEMPENG = [
-  [[[2.2, 0.6, -1.2], [0, 0.3, 0], [3, 0.25, 2]], [[-0.5, 1.4, -2.2], [0.9, 0.8, 0.2], [3, 0.25, 2]], [[1.8, 0.4, 1.8], [0, -0.5, 0], [3, 0.25, 2]], [[-2.6, 1.0, 0.5], [0.4, 1.2, 0.6], [3, 0.25, 2]]],
-  [[[-1.8, 0.2, 2.4], [0, -0.6, 0], [2, 0.2, 1.4]], [[2.8, 0.8, 1.2], [0.3, 0.4, 0.9], [2, 0.2, 1.4]], [[-2.4, 0.9, -1.4], [1.2, 0.2, 0], [2, 0.2, 1.4]], [[2.4, 0.3, -2.2], [0, 0.9, 0], [2, 0.2, 1.4]]],
-  [[[3.2, 1.4, 2.0], [0.8, 0.2, 0.4], [1.6, 0.18, 1.2]], [[-3, 0.2, 1.2], [0, 0.5, 0], [1.6, 0.18, 1.2]], [[0.6, 1.2, -3], [0.5, 1.0, 0.7], [1.6, 0.18, 1.2]], [[-0.8, 0.3, 2.8], [0, -0.2, 0], [1.6, 0.18, 1.2]]],
-];
-const NEON = [0xff3df0, 0x8a4dff, 0xc04dff];
-
-const ease = (x) => x * x * (3 - 2 * x);
-const lerp = (a, b, t) => a + (b - a) * t;
-
-function titik(p) {
-  const N = 14, out = [];
-  for (let i = 0; i < N; i++) {
-    const th = (i / N) * Math.PI * 2;
-    const r = 2.7 * (1 + p.a * Math.cos(p.m * th + p.phi));
-    out.push(new THREE.Vector3(r * Math.cos(th) * p.sx, TUBE, r * Math.sin(th) * p.sz));
-  }
-  return out;
+function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
 }
 
-function buatMobil() {
-  const car = new THREE.Group();
-  const cat = new THREE.MeshPhysicalMaterial({ color: 0x6d4aff, roughness: 0.25, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.1 });
-  const kaca = new THREE.MeshPhysicalMaterial({ color: 0xe9e4ff, roughness: 0.05, metalness: 0.6 });
-  const ban = new THREE.MeshStandardMaterial({ color: 0x1b1b2f, roughness: 0.8 });
-  const lampu = new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffd34d).multiplyScalar(3), toneMapped: false });
+// Tekstur permukaan keramik berbintik halus (speckled terrazzo)
+function buatTeksturKeramik() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 512, 512);
 
-  const bodi = new THREE.Mesh(new RoundedBoxGeometry(1.7, 0.4, 0.8, 4, 0.12), cat);
-  bodi.position.y = 0.3;
-  const kabin = new THREE.Mesh(new RoundedBoxGeometry(0.9, 0.35, 0.72, 4, 0.12), kaca);
-  kabin.position.set(-0.1, 0.65, 0);
-  car.add(bodi, kabin);
-  for (const x of [-0.55, 0.55]) for (const z of [-0.42, 0.42]) {
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.14, 24), ban);
-    w.rotation.x = Math.PI / 2; w.position.set(x, 0.18, z); car.add(w);
+  for (let i = 0; i < 420; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 0.7 + Math.random() * 1.3;
+    ctx.fillStyle = i % 3 === 0 ? 'rgba(65, 50, 105, 0.42)' : 'rgba(110, 95, 150, 0.28)';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
   }
-  for (const z of [-0.25, 0.25]) {
-    const l = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), lampu);
-    l.position.set(0.85, 0.32, z); car.add(l);
-  }
-  car.scale.setScalar(0.85);
-  car.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return car;
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
 }
 
-function teksturLantai() {
-  const c = document.createElement('canvas'); c.width = c.height = 1024;
-  const g = c.getContext('2d');
-  g.fillStyle = '#ddd7f3'; g.fillRect(0, 0, 1024, 1024);
-  g.strokeStyle = 'rgba(120,110,170,0.35)'; g.lineWidth = 3;
-  g.strokeRect(0, 0, 1024, 1024);
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(7, 7);
-  t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
-  return t;
+function kedalamanParitLokal(x, z) {
+  const cx = -S / 2;
+  const cz = -S / 2;
+  const distArc = Math.abs(Math.hypot(x - cx, z - cz) - R_ARC);
+  if (distArc >= GW) return 0;
+  const nd = distArc / GW;
+  const prof = (1 - nd * nd) * smoothstep(1.0, 0.76, nd);
+  return -GD * prof;
+}
+
+// Membuat geometri 3D palet persegi dengan busur parit cekung lokal + normal analitik
+function buatGeometriPalet(hasGroove = true) {
+  const segXZ = hasGroove ? 84 : 4;
+  const segY = hasGroove ? 10 : 1;
+  const geo = new THREE.BoxGeometry(S, H, S, segXZ, segY, segXZ);
+
+  const pos = geo.attributes.position;
+  const norm = geo.attributes.normal;
+  const halfH = H / 2;
+  const bevelEdge = 0.032;
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const nx0 = norm.getX(i);
+    const ny0 = norm.getY(i);
+    const nz0 = norm.getZ(i);
+
+    const dxEdge = Math.max(0, Math.abs(x) - (S / 2 - bevelEdge)) / bevelEdge;
+    const dzEdge = Math.max(0, Math.abs(z) - (S / 2 - bevelEdge)) / bevelEdge;
+    const edgeDrop = -0.015 * (dxEdge * dxEdge + dzEdge * dzEdge);
+
+    const gDrop = hasGroove ? kedalamanParitLokal(x, z) : 0;
+
+    // Dasar palet (-halfH) tetap rata, sedangkan bagian atas turun mengikuti parit cekung
+    const uy = (y + halfH) / H;
+    const newY = -halfH + uy * (H + gDrop + edgeDrop);
+    pos.setY(i, newY);
+
+    if (ny0 > 0.5 && hasGroove) {
+      const eps = 0.012;
+      const hC = gDrop + edgeDrop;
+      const hX = kedalamanParitLokal(x + eps, z) + edgeDrop;
+      const hZ = kedalamanParitLokal(x, z + eps) + edgeDrop;
+      const gx = (hC - hX) / eps;
+      const gz = (hC - hZ) / eps;
+      const len = Math.hypot(gx, 1.0, gz);
+      norm.setXYZ(i, gx / len, 1.0 / len, gz / len);
+    } else {
+      norm.setXYZ(i, nx0, ny0, nz0);
+    }
+  }
+
+  pos.needsUpdate = true;
+  norm.needsUpdate = true;
+  return geo;
+}
+
+// Mobil konsep GT Coupe 3D metalik (menggantikan koin emas di referensi)
+function buatMobilGT() {
+  const root = new THREE.Group();
+
+  const matBody = new THREE.MeshPhysicalMaterial({
+    color: 0xf5c24c,
+    metalness: 0.78,
+    roughness: 0.14,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.05,
+  });
+  const matGlass = new THREE.MeshPhysicalMaterial({
+    color: 0x16112b,
+    metalness: 0.25,
+    roughness: 0.06,
+    clearcoat: 1.0,
+  });
+  const matCarbon = new THREE.MeshStandardMaterial({
+    color: 0x1b1530,
+    metalness: 0.5,
+    roughness: 0.35,
+  });
+  const matHeadlight = new THREE.MeshBasicMaterial({ color: 0xfffce8 });
+  const matTaillight = new THREE.MeshBasicMaterial({ color: 0xff1e75 });
+
+  const s = new THREE.Shape();
+  s.moveTo(1.06, 0.0);
+  s.bezierCurveTo(1.06, 0.32, 0.88, 0.43, 0.52, 0.44);
+  s.bezierCurveTo(0.22, 0.44, -0.05, 0.40, -0.35, 0.45);
+  s.bezierCurveTo(-0.70, 0.47, -0.98, 0.42, -1.04, 0.28);
+  s.lineTo(-1.04, -0.28);
+  s.bezierCurveTo(-0.98, -0.42, -0.70, -0.47, -0.35, -0.45);
+  s.bezierCurveTo(-0.05, -0.40, 0.22, -0.44, 0.52, -0.44);
+  s.bezierCurveTo(0.88, -0.43, 1.06, -0.32, 1.06, 0.0);
+
+  const geoHull = new THREE.ExtrudeGeometry(s, {
+    depth: 0.13,
+    bevelEnabled: true,
+    bevelSegments: 12,
+    steps: 1,
+    bevelSize: 0.11,
+    bevelThickness: 0.12,
+  });
+  geoHull.rotateX(Math.PI / 2);
+  geoHull.center();
+  const hull = new THREE.Mesh(geoHull, matBody);
+  hull.position.y = 0.23;
+  hull.castShadow = true;
+  hull.receiveShadow = true;
+  root.add(hull);
+
+  const sc = new THREE.Shape();
+  sc.moveTo(0.36, 0.0);
+  sc.bezierCurveTo(0.36, 0.24, 0.20, 0.31, -0.05, 0.30);
+  sc.bezierCurveTo(-0.38, 0.29, -0.68, 0.25, -0.76, 0.16);
+  sc.lineTo(-0.76, -0.16);
+  sc.bezierCurveTo(-0.68, -0.25, -0.38, -0.29, -0.05, -0.30);
+  sc.bezierCurveTo(0.20, -0.31, 0.36, -0.24, 0.36, 0.0);
+
+  const geoCabin = new THREE.ExtrudeGeometry(sc, {
+    depth: 0.08,
+    bevelEnabled: true,
+    bevelSegments: 10,
+    steps: 1,
+    bevelSize: 0.10,
+    bevelThickness: 0.11,
+  });
+  geoCabin.rotateX(Math.PI / 2);
+  geoCabin.center();
+  const cabin = new THREE.Mesh(geoCabin, matGlass);
+  cabin.position.set(-0.14, 0.38, 0);
+  cabin.castShadow = true;
+  root.add(cabin);
+
+  const sr = new THREE.Shape();
+  sr.moveTo(0.08, 0.0);
+  sr.bezierCurveTo(0.08, 0.19, -0.05, 0.23, -0.25, 0.22);
+  sr.bezierCurveTo(-0.46, 0.21, -0.58, 0.18, -0.60, 0.12);
+  sr.lineTo(-0.60, -0.12);
+  sr.bezierCurveTo(-0.58, -0.18, -0.46, -0.21, -0.25, -0.22);
+  sr.bezierCurveTo(-0.05, -0.23, 0.08, -0.19, 0.08, 0.0);
+
+  const geoRoof = new THREE.ExtrudeGeometry(sr, {
+    depth: 0.03,
+    bevelEnabled: true,
+    bevelSegments: 6,
+    steps: 1,
+    bevelSize: 0.04,
+    bevelThickness: 0.04,
+  });
+  geoRoof.rotateX(Math.PI / 2);
+  geoRoof.center();
+  const roof = new THREE.Mesh(geoRoof, matBody);
+  roof.position.set(-0.22, 0.48, 0);
+  root.add(roof);
+
+  for (const z of [-0.28, 0.28]) {
+    const hl = new THREE.Mesh(new RoundedBoxGeometry(0.16, 0.04, 0.12, 2, 0.015), matHeadlight);
+    hl.position.set(0.98, 0.24, z);
+    hl.rotation.y = z > 0 ? -0.32 : 0.32;
+    root.add(hl);
+  }
+  const tl = new THREE.Mesh(new RoundedBoxGeometry(0.06, 0.045, 0.66, 2, 0.015), matTaillight);
+  tl.position.set(-1.07, 0.26, 0);
+  root.add(tl);
+
+  const geoTire = new THREE.CylinderGeometry(0.19, 0.19, 0.14, 24);
+  geoTire.rotateX(Math.PI / 2);
+  const wheels = [];
+  for (const x of [-0.62, 0.62]) {
+    for (const z of [-0.45, 0.45]) {
+      const w = new THREE.Mesh(geoTire, matCarbon);
+      w.position.set(x, 0.19, z);
+      root.add(w);
+      wheels.push(w);
+    }
+  }
+
+  root.scale.setScalar(0.45);
+  root.userData.wheels = wheels;
+  return root;
 }
 
 export default function Hero() {
@@ -83,129 +234,241 @@ export default function Hero() {
   useEffect(() => {
     const el = ref.current;
     let w = el.clientWidth, h = el.clientHeight;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(w, h);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 1.02;
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xd9d2f3);
+    scene.background = new THREE.Color(0xd5cef0);
+
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.35;
+    scene.environmentIntensity = 0.42;
 
-    const camera = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
-    const camBase = new THREE.Vector3(2, 9.5, 8.5);
+    const camera = new THREE.PerspectiveCamera(32, w / h, 0.1, 100);
+    const camBase = new THREE.Vector3(0.35, 8.6, 5.8);
+    const lookTarget = new THREE.Vector3(0.85, -0.15, 0.05);
     camera.position.copy(camBase);
+    camera.lookAt(lookTarget);
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc6f5, 0.35));
-    const sun = new THREE.SpotLight(0xffffff, 115, 0, 0.9, 0.8, 1.6);
-    sun.position.set(10, 9, 3);
+    const hemi = new THREE.HemisphereLight(0xe2dcf8, 0x8e82be, 0.88);
+    scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xfff4ea, 3.1);
+    sun.position.set(8.5, 6.2, -5.5);
+    sun.target.position.set(2.0, 0, 0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.bias = -0.0004;
-    sun.shadow.camera.near = 3; sun.shadow.camera.far = 40;
-    scene.add(sun);
+    sun.shadow.camera.near = 2;
+    sun.shadow.camera.far = 28;
+    const dCam = 9.5;
+    sun.shadow.camera.left = -dCam;
+    sun.shadow.camera.right = dCam;
+    sun.shadow.camera.top = dCam;
+    sun.shadow.camera.bottom = -dCam;
+    sun.shadow.bias = -0.0005;
+    sun.shadow.normalBias = 0.02;
+    scene.add(sun, sun.target);
 
-    const dunia = new THREE.Group();
-    dunia.position.set(2.2, 0, 0);
-    scene.add(dunia);
+    const worldGroup = new THREE.Group();
+    worldGroup.position.set(2.20, 0, 0.10);
+    worldGroup.rotation.y = -0.58;
+    scene.add(worldGroup);
 
-    const lantai = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ map: teksturLantai(), roughness: 0.55 }));
-    lantai.rotation.x = -Math.PI / 2; lantai.receiveShadow = true;
-    scene.add(lantai);
-
-    // Cincin kaca buram mengikuti jalur yang berubah
-    const kacaBuram = new THREE.MeshPhysicalMaterial({
-      color: 0xf3efff, transmission: 1, thickness: 0.9, roughness: 0.35, ior: 1.35,
-      clearcoat: 1, clearcoatRoughness: 0.25, attenuationColor: new THREE.Color(0xd5c8ff), attenuationDistance: 2.5,
-    });
-    let tabung = new THREE.Mesh(new THREE.BufferGeometry(), kacaBuram);
-    tabung.castShadow = true; tabung.receiveShadow = true;
-    dunia.add(tabung);
-
-    // Lempengan putih bertepi neon
-    const putih = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 });
-    const lempeng = LEMPENG.map((_, i) => {
-      const g = new THREE.Group();
-      const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), putih);
-      m.castShadow = true; m.receiveShadow = true;
-      const warna = new THREE.Color(NEON[i]).multiplyScalar(3);
-      const tepi = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.1, 0.03), new THREE.MeshBasicMaterial({ color: warna, toneMapped: false }));
-      tepi.position.z = 0.5;
-      const cahaya = new THREE.PointLight(NEON[i], 3.5, 4, 2);
-      cahaya.position.set(0, 0.6, 0.8);
-      g.add(m, tepi, cahaya);
-      dunia.add(g);
-      return g;
+    const texKeramik = buatTeksturKeramik();
+    const matPallet = new THREE.MeshStandardMaterial({
+      color: 0xf7f4fc,
+      map: texKeramik,
+      roughness: 0.52,
+      metalness: 0.04,
     });
 
-    const mobil = buatMobil();
-    dunia.add(mobil);
+    const geoGrooved = buatGeometriPalet(true);
+    const geoFlat = buatGeometriPalet(false);
 
-    // Debu
-    const jml = 350, pos = new Float32Array(jml * 3);
-    for (let i = 0; i < jml; i++) { pos[i * 3] = (Math.random() - 0.5) * 24; pos[i * 3 + 1] = Math.random() * 6; pos[i * 3 + 2] = (Math.random() - 0.5) * 18; }
-    const debuGeo = new THREE.BufferGeometry(); debuGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    const debu = new THREE.Points(debuGeo, new THREE.PointsMaterial({ color: 0x2a2540, size: 0.035, sizeAttenuation: true }));
-    scene.add(debu);
+    // Dasar rongga neon ungu-magenta jauh di bawah palet (-H + 0.02)
+    const matNeonFloor = new THREE.MeshBasicMaterial({ color: 0xd926ff });
+    const neonBase = new THREE.Mesh(new THREE.PlaneGeometry(STEP * 3.2, STEP * 3.2), matNeonFloor);
+    neonBase.rotation.x = -Math.PI / 2;
+    neonBase.position.y = -H + 0.02;
+    worldGroup.add(neonBase);
 
-    // Post-processing: bloom untuk neon
-    const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: 4 });
-    const composer = new EffectComposer(renderer, target);
-    composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.6, 0.6, 1.2));
-    composer.addPass(new OutputPass());
+    // Susun grid 9x9 palet persegi agar menutupi seluruh layar hingga sudut kiri-atas tanpa celah
+    const pallets = {};
+    for (let gx = -5; gx <= 4; gx++) {
+      for (let gz = -5; gz <= 4; gz++) {
+        const ix = gx + 0.5;
+        const iz = gz + 0.5;
+
+        let hasGroove = false;
+        let baseRot = 0;
+
+        if (ix === 0.5 && iz === 0.5) { hasGroove = true; baseRot = 0; }
+        else if (ix === -0.5 && iz === 0.5) { hasGroove = true; baseRot = -Math.PI / 2; }
+        else if (ix === -0.5 && iz === -0.5) { hasGroove = true; baseRot = Math.PI; }
+        else if (ix === 0.5 && iz === -0.5) { hasGroove = true; baseRot = Math.PI / 2; }
+        else if (ix === -0.5 && iz === -1.5) { hasGroove = true; baseRot = 0; }
+        else if (ix === 0.5 && iz === -1.5) { hasGroove = true; baseRot = Math.PI; }
+
+        const pivot = new THREE.Group();
+        pivot.position.set(ix * STEP, 0, iz * STEP);
+
+        const mesh = new THREE.Mesh(hasGroove ? geoGrooved : geoFlat, matPallet);
+        mesh.position.y = -H / 2;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        pivot.add(mesh);
+
+        // Strip neon ungu-magenta ditaruh di bagian paling bawah dinding palet (-H + 0.04)
+        // jauh di bawah dasar parit (-GD = -0.34), sehingga hanya terlihat dari celah samping bawah saat palet terangkat!
+        if (hasGroove) {
+          const matRimNeon = new THREE.MeshBasicMaterial({ color: 0xe62eff });
+          const neonSkirt = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.08, S - 0.02), matRimNeon);
+          neonSkirt.position.y = -H + 0.05;
+          pivot.add(neonSkirt);
+
+          const pLight = new THREE.PointLight(0xc81eff, 0, 4.5, 1.8);
+          pLight.position.set(0, -H * 0.4, 0);
+          pivot.add(pLight);
+          pivot.userData.pLight = pLight;
+          pivot.userData.neonSkirt = neonSkirt;
+        }
+
+        pivot.rotation.y = baseRot;
+        pivot.userData.baseRot = baseRot;
+        worldGroup.add(pivot);
+
+        pallets[`${ix},${iz}`] = pivot;
+      }
+    }
+
+    const mobil = buatMobilGT();
+    worldGroup.add(mobil);
+
+    const carGlow = new THREE.PointLight(0xffb830, 1.4, 2.2, 2.0);
+    mobil.add(carGlow);
+    carGlow.position.set(0, 0.35, 0);
 
     const mouse = { x: 0, y: 0 };
-    const onMove = (e) => { mouse.x = e.clientX / innerWidth - 0.5; mouse.y = e.clientY / innerHeight - 0.5; };
+    const onMove = (e) => {
+      mouse.x = e.clientX / innerWidth - 0.5;
+      mouse.y = e.clientY / innerHeight - 0.5;
+    };
     addEventListener('mousemove', onMove);
+
     const onResize = () => {
-      w = el.clientWidth; h = el.clientHeight;
-      renderer.setSize(w, h); composer.setSize(w, h);
-      camera.aspect = w / h; camera.updateProjectionMatrix();
+      w = el.clientWidth;
+      h = el.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
     };
     addEventListener('resize', onResize);
 
     const clock = new THREE.Clock();
-    const HOLD = 4, MORPH = 2.8, SIKLUS = HOLD + MORPH;
-    const p = { a: 0, m: 2, phi: 0, sx: 1, sz: 1 };
+    const params = new URLSearchParams(location.search);
+    const FIX = params.has('t') ? Number(params.get('t')) : null;
+
+    const animasikanPalet = (key, liftAmount, extraRotY, tiltX = 0, tiltZ = 0) => {
+      const p = pallets[key];
+      if (!p) return;
+      p.position.y = liftAmount * 0.38;
+      p.rotation.set(tiltX, p.userData.baseRot + extraRotY, tiltZ);
+      if (p.userData.pLight) {
+        const glow = Math.min(1, liftAmount * 2.2 + Math.abs(tiltX) * 3.0);
+        p.userData.pLight.intensity = glow * 9.0;
+        p.userData.neonSkirt.visible = glow > 0.02;
+      }
+    };
+
     let raf;
     const loop = () => {
-      const t = clock.getElapsedTime();
-      const n = JALUR.length;
-      const idx = Math.floor(t / SIKLUS);
-      const lokal = t - idx * SIKLUS;
-      const k = lokal < HOLD ? 0 : ease((lokal - HOLD) / MORPH);
-      const A = JALUR[idx % n], B = JALUR[(idx + 1) % n];
-      for (const key of ['a', 'm', 'phi', 'sx', 'sz']) p[key] = lerp(A[key], B[key], k);
+      const t = FIX ?? clock.getElapsedTime();
 
-      const curve = new THREE.CatmullRomCurve3(titik(p), true, 'centripetal');
-      tabung.geometry.dispose();
-      tabung.geometry = new THREE.TubeGeometry(curve, 160, TUBE, 28, true);
+      for (const key of ['0.5,0.5', '-0.5,0.5', '-0.5,-0.5', '0.5,-0.5', '-0.5,-1.5', '0.5,-1.5']) {
+        animasikanPalet(key, 0, 0, 0, 0);
+      }
 
-      lempeng.forEach((g, i) => {
-        const a = LEMPENG[i][idx % n], b = LEMPENG[i][(idx + 1) % n];
-        g.position.set(lerp(a[0][0], b[0][0], k), lerp(a[0][1], b[0][1], k), lerp(a[0][2], b[0][2], k));
-        g.rotation.set(lerp(a[1][0], b[1][0], k), lerp(a[1][1], b[1][1], k), lerp(a[1][2], b[1][2], k));
-        g.scale.set(lerp(a[2][0], b[2][0], k), lerp(a[2][1], b[2][1], k), lerp(a[2][2], b[2][2], k));
-      });
+      // Sinkronisasi penuh antara putaran palet dan posisi mobil di bulatan cekung:
+      //Siklus 12 detik = 1 putaran penuh mobil mengelilingi bulatan atau S-curve
+      const cycle = ((t % 12) + 12) % 12;
+      let carAngle = 0;
 
-      // Mobil menyusuri jalur
-      const u = (t * 0.05) % 1;
-      const pt = curve.getPointAt(u), tg = curve.getTangentAt(u);
-      mobil.position.set(pt.x, pt.y + TUBE * 0.9, pt.z);
-      mobil.rotation.y = Math.atan2(-tg.z, tg.x);
+      if (cycle < 4.0) {
+        // Fase A (0..4s): Mobil melaju di separuh bawah-kiri (dari sudut +0.35*PI ke +1.35*PI),
+        // sementara Palet Kanan-Atas ('0.5,-0.5', kuadran -0.5*PI..0) terangkat & berputar 180->0 derajat
+        // disertai pendaran neon ungu dari bawahnya, lalu mendarat rata membentuk bulatan!
+        const u = cycle / 4.0;
+        carAngle = (0.35 + u * 1.0) * Math.PI;
 
-      debu.rotation.y = t * 0.01;
-      camera.position.set(camBase.x + mouse.x * 1.5, camBase.y - mouse.y * 1.0, camBase.z);
-      camera.lookAt(2.2, 0, 0);
+        const bell = Math.sin(u * Math.PI);
+        const rot = (1 - smoothstep(0.0, 0.85, u)) * Math.PI;
+        animasikanPalet('0.5,-0.5', bell, rot, bell * 0.18, -bell * 0.14);
 
-      composer.render();
+        const b2 = Math.sin(Math.min(1, u * 1.5) * Math.PI) * 0.42;
+        animasikanPalet('0.5,0.5', b2, 0, 0, -b2 * 0.10);
+      } else if (cycle < 8.0) {
+        // Fase B (4..8s): Keempat palet menyatu membentuk BULATAN CEKUNG PENUH (seperti g08.jpg).
+        // Mobil melintas di separuh atas-kanan (dari +1.35*PI ke +2.35*PI),
+        // sementara Palet Kiri-Bawah ('-0.5,0.5') di belakang mobil sedikit terangkat memancarkan neon ungu!
+        const u = (cycle - 4.0) / 4.0;
+        carAngle = (1.35 + u * 1.0) * Math.PI;
+
+        const bell = Math.sin(u * Math.PI) * 0.62;
+        animasikanPalet('-0.5,0.5', bell, bell * 0.20, bell * 0.14, bell * 0.14);
+      } else {
+        // Fase C (8..12s): Mobil berada di kuadran kanan-bawah (+0.15*PI .. +0.85*PI),
+        // sementara Palet Kiri-Atas ('-0.5,-0.5') di seberangnya terangkat & berputar 180 derajat
+        // sehingga busur cekungnya berbalik arah menyambung ke Palet Atas ('-0.5,-1.5') membentuk JALUR S-CURVE (g05.jpg)!
+        const u = (cycle - 8.0) / 4.0;
+        carAngle = (0.15 + u * 0.70) * Math.PI;
+
+        let rotProgress = 0;
+        let lift = 0;
+        if (u < 0.35) {
+          const k = smoothstep(0.0, 0.35, u);
+          rotProgress = k;
+          lift = Math.sin(k * Math.PI);
+        } else if (u < 0.70) {
+          rotProgress = 1.0;
+          lift = 0.22;
+        } else {
+          const k = smoothstep(0.70, 1.0, u);
+          rotProgress = 1.0 - k;
+          lift = Math.sin(k * Math.PI);
+        }
+        animasikanPalet('-0.5,-0.5', lift, rotProgress * Math.PI, lift * 0.16, lift * 0.14);
+      }
+
+      const cxCar = Math.cos(carAngle) * R_ARC;
+      const czCar = Math.sin(carAngle) * R_ARC;
+
+      const curKey = `${cxCar >= 0 ? 0.5 : -0.5},${czCar >= 0 ? 0.5 : -0.5}`;
+      const curPallet = pallets[curKey];
+      const palletLift = curPallet ? curPallet.position.y : 0;
+
+      mobil.position.set(cxCar, palletLift - GD + 0.02, czCar);
+      const tangentYaw = -carAngle - Math.PI / 2;
+      mobil.rotation.set(0, tangentYaw, 0.15);
+
+      for (const wMesh of mobil.userData.wheels) {
+        wMesh.rotation.z = -t * 7.0;
+      }
+
+      camera.position.set(
+        camBase.x + mouse.x * 0.7,
+        camBase.y - mouse.y * 0.45,
+        camBase.z
+      );
+      camera.lookAt(lookTarget);
+
+      renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);
     };
     loop();
@@ -214,7 +477,8 @@ export default function Hero() {
       cancelAnimationFrame(raf);
       removeEventListener('mousemove', onMove);
       removeEventListener('resize', onResize);
-      composer.dispose(); renderer.dispose(); pmrem.dispose();
+      renderer.dispose();
+      pmrem.dispose();
       el.removeChild(renderer.domElement);
     };
   }, []);
