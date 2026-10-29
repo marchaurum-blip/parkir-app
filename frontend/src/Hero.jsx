@@ -1,10 +1,12 @@
-// Hero 3D (Three.js - Pixel-Calibrated Blender Cycles Match for g02, g04, g06, g08):
-// - Pencahayaan & Bayangan: Grazing sun sudut rendah (jam 2:15 -> jam 8:15) menghasilkan bayangan
-//   jatuh memanjang yang tegas dari mobil ke lantai kiri serta terminator bayangan di dalam parit cekung.
-// - Tekstur: High-DPI matte stone micro-grain + bintik terrazzo mikro tajam.
-// - Neon Bawah Palet: Garis lurus tabung neon di bibir bawah dinding vertikal palet terangkat
-//   (dinding atas tetap teduh lavender tegas, bibir bawah putih-magenta menyala, dan lantai/parit
-//   di bawahnya berpendar deep electric violet & hot magenta pekat persis g04.jpg).
+// Hero 3D Interaktif Penuh (Three.js - Calibrated Blender Shader + "Semua Kotak Kebuka" saat Mengetik/Aksi):
+// - Mengikuti referensi g02, g04, g06, g08 secara presisi (pencahayaan grazing sun, bayangan parit,
+//   bayangan jatuh memanjang, tekstur micro-terrazzo, dan garis lurus neon di bawah palet).
+// - Terhubung penuh dengan UI:
+//   * Saat user fokus / mengetik di input mana pun ("pas lagi ngetik, semua kotak itu kebuka"),
+//     seluruh kotak palet di sekeliling panggung terangkat & membuka secara mekanis dengan pendaran
+//     neon ungu-magenta di setiap tepi bawahnya, serta berdenyut mengikuti ketikan tombol!
+//   * Saat login (Owner / Petugas / Admin), pindah menu, atau transaksi Masuk/Keluar, panggung 3D
+//     merespons dengan gelombang pembukaan palet dan akselerasi mobil.
 // Dibuat dengan bantuan Antigravity CLI.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
@@ -60,7 +62,6 @@ function buatGeometriPalet(hasGroove = true) {
 
     const gDrop = hasGroove ? kedalamanParitLokal(x, z) : 0;
 
-    // uy = 0 di dasar palet (-H), uy = 1 di permukaan atas rata (0.0 + gDrop + edgeDrop)
     const uy = (y + halfH) / H;
     const newY = -H + uy * (H + gDrop + edgeDrop);
     pos.setY(i, newY);
@@ -110,6 +111,8 @@ const FRAG_PALLET = /* glsl */ `
   uniform vec4 uSlab0; // Palet kanan (0.5, -0.5)
   uniform vec4 uSlab1; // Palet atas  (-0.5, -0.5)
   uniform vec2 uSlabRot;
+  // Intensitas pembukaan seluruh kotak palet saat user mengetik / klik aksi ("semua kotak kebuka")
+  uniform float uGlobalOpen;
 
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
@@ -150,7 +153,6 @@ const FRAG_PALLET = /* glsl */ `
     float isSideWall = 1.0 - isTopFace;
 
     // 1. ARAH SINAR MATAHARI SUDUT RENDAH DARI KANAN-ATAS LAYAR MENUJU JAM 8:20 (KIRI-BAWAH):
-    // Dikalibrasi agar bayangan jatuh mobil di jam 11 memotong keluar bibir parit ke arah teks kiri (persis g08.jpg!)
     vec3 L = normalize(vec3(0.91, 0.32, -0.26));
     vec2 sunDirWorld = normalize(L.xz);
     float caG = cos(0.72), saG = sin(0.72);
@@ -169,21 +171,19 @@ const FRAG_PALLET = /* glsl */ `
     float grooveShadow = mix(1.0, rimShadow, inGroove);
 
     // 3. BAYANGAN JATUH MEMANJANG DARI MOBIL KE ARAH JAM 8:20 (-sunDirGroup):
-    // Tegas dan memanjang keluar bibir parit menuju lantai kiri seperti bayangan koin di g08.jpg!
     vec2 toFragG = gXZ - uCarGroupPos.xz;
     float projAlong = dot(toFragG, -sunDirGroup);
     vec2 perpVec = toFragG - (-sunDirGroup) * clamp(projAlong, -0.08, 2.35);
     float projPerp = length(perpVec);
 
     float carContact = 1.0 - 0.90 * exp(-dot(toFragG, toFragG) * 6.5);
-    // Lebar bayangan disesuaikan dengan bodi mobil, memanjang sejauh 2.2 unit dengan tepi lembut namun tegas
     float shadowWidth = 0.26 + 0.06 * clamp(projAlong, 0.0, 2.0);
     float carLongShadow = 1.0 - 0.88 * (1.0 - smoothstep(shadowWidth * 0.45, shadowWidth, projPerp))
                         * smoothstep(-0.10, 0.12, projAlong)
                         * (1.0 - smoothstep(1.25, 2.25, projAlong));
     float carShadow = min(carContact, carLongShadow);
 
-    // 4. BAYANGAN JATUH DARI PALET YANG TERANGKAT KE LANTAI KIRI-BAWAHNYA (g04.jpg & g08.jpg):
+    // 4. BAYANGAN JATUH DARI PALET YANG TERANGKAT KE LANTAI KIRI-BAWAHNYA:
     float slabCastShadow = 1.0;
     float halfS = 1.45;
 
@@ -200,19 +200,16 @@ const FRAG_PALLET = /* glsl */ `
       }
     }
 
-    // Dinding vertikal samping palet yang membelakangi matahari menjadi teduh tegas (#b3a8dc)
-    // sehingga ketebalan palet 3D terlihat sangat jelas sebelum garis neon di bibir bawahnya!
     float sideWallShade = mix(1.0, 0.24 + 0.76 * clamp(dot(N.xz, sunDirWorld), 0.0, 1.0), isSideWall);
 
-    // 5. SPOTLIGHT DIAGONAL HANGAT DARI KANAN-ATAS KE TENGAH LINGKARAN (g02.jpg, g04.jpg, g08.jpg):
+    // 5. SPOTLIGHT DIAGONAL HANGAT DARI KANAN-ATAS KE TENGAH LINGKARAN:
     vec2 spotCenter = vec2(2.85, -1.55);
     float spotDist = length((vWorldPos.xz - spotCenter) * vec2(0.38, 0.52));
     float spotMask = smoothstep(7.2, 0.8, spotDist);
 
-    // Palet warna terkalibrasi dari sampel piksel g04.jpg & g08.jpg:
-    vec3 colWarmSun    = vec3(0.992, 0.968, 0.970); // putih mutiara hangat (#fdf7f7)
-    vec3 colSoftShade  = vec3(0.745, 0.710, 0.875); // lantai teduh kiri/bawah (#beb5df)
-    vec3 colDeepShadow = vec3(0.495, 0.445, 0.695); // bayangan parit & cast shadow tegas (#7e71b1)
+    vec3 colWarmSun    = vec3(0.992, 0.968, 0.970);
+    vec3 colSoftShade  = vec3(0.745, 0.710, 0.875);
+    vec3 colDeepShadow = vec3(0.495, 0.445, 0.695);
 
     float totalShadow = grooveShadow * carShadow * slabCastShadow * sideWallShade;
 
@@ -220,12 +217,10 @@ const FRAG_PALLET = /* glsl */ `
     vec3 litCol = mix(colSoftShade, colWarmSun, sunFactor);
     vec3 col = mix(colDeepShadow, litCol, totalShadow);
 
-    // Ambient Occlusion di dasar parit & garis nat tipis antar palet + bevel highlight tipis di tepi atas dinding
     float edgeDist = min(1.45 - abs(vLocalPos.x), 1.45 - abs(vLocalPos.z));
     float seamLine = 1.0 - smoothstep(0.003, 0.020, edgeDist);
     col *= (1.0 - grooveDepth * 0.08 - seamLine * 0.22);
 
-    // Garis highlight bevel tipis di rusuk atas palet yang terangkat (seperti tepi atas slab di g04.jpg & g08.jpg)
     if (myLift > 0.02) {
       float topRim = smoothstep(0.028, 0.004, edgeDist) * smoothstep(-0.02, 0.0, vLocalPos.y);
       col = mix(col, vec3(1.0, 0.99, 1.0), topRim * 0.55);
@@ -246,15 +241,13 @@ const FRAG_PALLET = /* glsl */ `
       col = mix(col, dotCol, spMask * 0.78);
     }
 
-    // Kilau specular halus di bibir & dinding parit yang menghadap matahari
     float spec = pow(clamp(dot(N, H), 0.0, 1.0), 28.0) * 0.22 * totalShadow * spotMask;
     col += vec3(1.0, 0.98, 0.96) * spec;
 
-    // Pantulan emas hangat dari mobil ke dinding/dasar parit tepat di dekatnya (g06.jpg & g08.jpg)
     float dCarG = length(gXZ - uCarGroupPos.xz);
     col += vec3(1.0, 0.76, 0.24) * exp(-dCarG * 2.3) * 0.32 * (0.25 + 0.75 * grooveDepth);
 
-    // 7. GARIS LURUS NEON UNGU-MAGENTA DI BAWAH RUSUK PALET YANG TERANGKAT (IDENTIK g04.jpg & g06.jpg):
+    // 7. GARIS LURUS NEON UNGU-MAGENTA DI BAWAH RUSUK PALET YANG TERANGKAT:
     float neonViolet = 0.0;
     float neonMagenta = 0.0;
     float neonCore = 0.0;
@@ -266,18 +259,13 @@ const FRAG_PALLET = /* glsl */ `
       if (sl.w > 0.01) {
         float sdBox = sdRotBox2D(gXZ, vec2(sl.x, sl.z), rotK, vec2(halfS));
 
-        // Fokuskan cahaya neon pada rusuk depan-kiri (+Z) dan sudut tengah yang menghadap kamera & lingkaran
         vec2 rel = gXZ - vec2(sl.x, sl.z);
         vec2 focusDir = (k == 1) ? normalize(vec2(0.32, 0.95)) : normalize(vec2(-0.62, 0.78));
         float sideFocus = 0.25 + 0.75 * smoothstep(-0.45, 0.55, dot(normalize(rel + vec2(1e-4)), focusDir));
 
-        // A. PADA DINDING VERTIKAL SAMPING PALET YANG SEDANG TERANGKAT ITU SENDIRI:
-        // Dinding atas (70% atas) dibiarkan tetap teduh lavender agar ketebalan slab terlihat tegas seperti g04.jpg;
-        // hanya 30% bagian terbawah dinding vertikal (tepat di celah lantai vWorldPos.y ~ 0.0) yang menyala menjadi garis neon lurus!
         float isThisRaisedSlab = step(0.015, myLift) * (1.0 - step(0.08, abs(myLift - sl.y))) * step(abs(sdBox), 0.06);
         if (isThisRaisedSlab > 0.5 && isSideWall > 0.5) {
           float hAboveFloor = vWorldPos.y;
-          // Tabung neon tipis tepat di dekat batas lantai (hAboveFloor = 0.005), maksimal hanya 32% tinggi angkat!
           float distTube = abs(hAboveFloor - 0.005);
           float maxWallH = sl.y * 0.34;
           float lowWallMask = 1.0 - smoothstep(maxWallH * 0.55, maxWallH, hAboveFloor);
@@ -291,10 +279,8 @@ const FRAG_PALLET = /* glsl */ `
           neonViolet  += barViol * sl.w * sideFocus * 1.25;
         }
 
-        // B. PADA LANTAI & PARIT CEKUNG DI BAWAH / SEKITAR RUSUK PALET YANG TERANGKAT (myLift < sl.y - 0.015):
         if (myLift < sl.y - 0.015 && sdBox > -0.025) {
           float distEdge = max(sdBox, 0.0);
-          // Di dalam parit cekung, cahaya ungu-magenta merambat mengikuti lengkungan parit seperti g04.jpg!
           float grooveReach = 1.0 + grooveDepth * 1.05;
 
           float coreLine   = exp(-distEdge * 38.0) * sl.w * sideFocus;
@@ -308,14 +294,33 @@ const FRAG_PALLET = /* glsl */ `
       }
     }
 
+    // EFEK KHUSUS SAAT MENGETIK / AKSI ("SEMUA KOTAK ITU KEBUKA"):
+    // Setiap kotak palet yang ikut terangkat (myLift > 0.018) menyalakan garis neon lurus di rusuk bawahnya
+    // dan memendarkan cahaya ungu-magenta di celah nat antar kotak!
+    if (uGlobalOpen > 0.01) {
+      float liftStr = clamp(myLift * 4.5, 0.0, 1.35) * uGlobalOpen;
+      if (isSideWall > 0.5 && myLift > 0.018) {
+        float hAbove = vWorldPos.y;
+        float dTube = abs(hAbove - 0.005);
+        float maxWH = max(myLift * 0.38, 0.04);
+        float wMask = 1.0 - smoothstep(maxWH * 0.5, maxWH, hAbove);
+        neonCore    += exp(-dTube * 48.0) * wMask * liftStr * 1.45;
+        neonMagenta += exp(-dTube * 20.0) * wMask * liftStr * 1.25;
+        neonViolet  += exp(-dTube * 9.5)  * liftStr * 1.15;
+      }
+      // Pendaran neon di sepanjang garis nat (seam) semua kotak yang sedang terbuka
+      float seamDist = max(edgeDist, 0.0);
+      float radialMask = smoothstep(9.5, 1.5, length(gXZ));
+      float seamGlow = uGlobalOpen * radialMask * (1.0 - step(0.10, myLift));
+      neonCore    += exp(-seamDist * 42.0) * seamGlow * 0.85;
+      neonMagenta += exp(-seamDist * 8.5)  * seamGlow * 0.95;
+      neonViolet  += exp(-seamDist * 2.8)  * seamGlow * 1.05;
+    }
+
     neonViolet  = clamp(neonViolet, 0.0, 1.0);
     neonMagenta = clamp(neonMagenta, 0.0, 1.0);
     neonCore    = clamp(neonCore, 0.0, 1.0);
 
-    // Warna neon saturasi tinggi sesuai sampel piksel g04.jpg:
-    // 1. Halo luar: Deep Electric Purple-Violet (#4f0fd6 -> vec3(0.31, 0.05, 0.86))
-    // 2. Tengah: Vibrant Hot Magenta (#f71285 -> vec3(0.98, 0.07, 0.58))
-    // 3. Inti garis lurus: Pure White-Pink (#ffeaff -> vec3(1.00, 0.90, 1.00))
     vec3 colViolet  = vec3(0.31, 0.05, 0.86);
     vec3 colMagenta = vec3(0.98, 0.07, 0.58);
     vec3 colCore    = vec3(1.00, 0.90, 1.00);
@@ -324,15 +329,15 @@ const FRAG_PALLET = /* glsl */ `
     col = mix(col, colMagenta, neonMagenta * 0.92);
     col = mix(col, colCore,    neonCore);
 
-    // 8. BERKAS SINAR MATAHARI DIAGONAL (SUNBEAM GLARE STREAK SEPERTI KANAN-ATAS g04.jpg):
-    if (uSlab1.w > 0.25) {
+    if (uSlab1.w > 0.25 || uGlobalOpen > 0.3) {
+      float bStr = max(uSlab1.w, uGlobalOpen * 0.85);
       vec2 beamOrigin = vec2(1.05, -0.45);
       vec2 beamDir = normalize(vec2(0.60, -0.80));
       vec2 toP = vWorldPos.xz - beamOrigin;
       float bAlong = dot(toP, beamDir);
       float bPerp  = length(toP - beamDir * bAlong);
       float beam = exp(-bPerp * bPerp * 3.8) * smoothstep(-0.8, 0.3, bAlong) * smoothstep(5.2, 0.6, bAlong);
-      col = mix(col, vec3(1.0, 0.97, 1.0), beam * clamp(uSlab1.w * 0.45, 0.0, 0.48));
+      col = mix(col, vec3(1.0, 0.97, 1.0), beam * clamp(bStr * 0.45, 0.0, 0.48));
     }
 
     gl_FragColor = vec4(col, 1.0);
@@ -462,6 +467,7 @@ export default function Hero() {
       uSlab0: { value: new THREE.Vector4(0.5 * STEP, 0, -0.5 * STEP, 0) },
       uSlab1: { value: new THREE.Vector4(-0.5 * STEP, 0, -0.5 * STEP, 0) },
       uSlabRot: { value: new THREE.Vector2(0, 0) },
+      uGlobalOpen: { value: 0.0 },
     };
 
     const matPallet = new THREE.ShaderMaterial({
@@ -474,6 +480,7 @@ export default function Hero() {
     const geoFlat = buatGeometriPalet(false);
 
     const pallets = {};
+    const allPalletList = [];
     for (let gx = -5; gx <= 4; gx++) {
       for (let gz = -5; gz <= 4; gz++) {
         const ix = gx + 0.5;
@@ -497,16 +504,72 @@ export default function Hero() {
 
         pivot.rotation.y = baseRot;
         pivot.userData.baseRot = baseRot;
+        pivot.userData.ix = ix;
+        pivot.userData.iz = iz;
         pivot.userData.gx = ix * STEP;
         pivot.userData.gz = iz * STEP;
+        pivot.userData.distRing = Math.hypot(ix, iz);
         worldGroup.add(pivot);
 
         pallets[`${ix},${iz}`] = pivot;
+        allPalletList.push(pivot);
       }
     }
 
     const mobil = buatMobilGT();
     worldGroup.add(mobil);
+
+    const params = new URLSearchParams(location.search);
+    const FIX = params.has('t') ? Number(params.get('t')) : null;
+    const FORCE_OPEN = params.get('open') === '1';
+
+    // State interaktif yang menghubungkan seluruh input & tombol UI dengan panggung 3D:
+    // - isFocusedInput: aktif saat kursor berada di dalam input/select/textarea
+    // - typingHold: bertahan beberapa saat setiap kali user mengetik karakter ("pas lagi ngetik, semua kotak itu kebuka")
+    // - keyPulse: denyut gelombang mekanis setiap ketikan tombol
+    // - actionBurst: gelombang besar saat login (Owner/Petugas/Admin), pindah tab, atau simpan transaksi
+    let isFocusedInput = false;
+    let typingHold = FORCE_OPEN ? 999 : 0;
+    let keyPulse = 0;
+    let actionBurst = 0;
+    let openSmooth = FORCE_OPEN ? 1.0 : 0.0;
+    let extraCarPhase = 0;
+
+    const isFormEl = (elTarget) => {
+      if (!elTarget || !elTarget.tagName) return false;
+      const tag = elTarget.tagName.toUpperCase();
+      return tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+    };
+
+    const onFocusIn = (e) => {
+      if (isFormEl(e.target)) {
+        isFocusedInput = true;
+        typingHold = Math.max(typingHold, 1.8);
+        keyPulse = Math.min(keyPulse + 0.45, 1.2);
+      }
+    };
+    const onFocusOut = (e) => {
+      if (isFormEl(e.target)) {
+        isFocusedInput = false;
+      }
+    };
+    const onInputOrKey = (e) => {
+      if (isFormEl(e.target) || isFocusedInput) {
+        typingHold = 2.4;
+        keyPulse = Math.min(keyPulse + 0.55, 1.5);
+      }
+    };
+    const onParkirAksi = () => {
+      actionBurst = 1.6;
+      typingHold = Math.max(typingHold, 2.2);
+      keyPulse = 1.3;
+    };
+
+    window.addEventListener('focusin', onFocusIn);
+    window.addEventListener('focusout', onFocusOut);
+    window.addEventListener('input', onInputOrKey);
+    window.addEventListener('keydown', onInputOrKey);
+    window.addEventListener('parkir:aksi', onParkirAksi);
 
     const mouse = { x: 0, y: 0 };
     const onMove = (e) => {
@@ -525,8 +588,7 @@ export default function Hero() {
     addEventListener('resize', onResize);
 
     const clock = new THREE.Clock();
-    const params = new URLSearchParams(location.search);
-    const FIX = params.has('t') ? Number(params.get('t')) : null;
+    let prevT = 0;
 
     const animasikanPalet = (key, liftY, extraRotY, tiltX = 0, tiltZ = 0) => {
       const p = pallets[key];
@@ -542,11 +604,63 @@ export default function Hero() {
 
     let raf;
     const loop = () => {
-      const t = FIX ?? clock.getElapsedTime();
+      const rawT = clock.getElapsedTime();
+      const dt = Math.min(rawT - prevT, 0.05);
+      prevT = rawT;
+      const t = FIX ?? rawT;
+
+      if (!FORCE_OPEN) {
+        typingHold = Math.max(0, typingHold - dt);
+        keyPulse = Math.max(0, keyPulse - dt * 2.4);
+        actionBurst = Math.max(0, actionBurst - dt * 0.9);
+      }
+
+      const targetOpen = (FORCE_OPEN || isFocusedInput || typingHold > 0.05 || actionBurst > 0.05) ? 1.0 : 0.0;
+      openSmooth += (targetOpen - openSmooth) * (FORCE_OPEN ? 1.0 : Math.min(1.0, dt * 6.5));
+      uniforms.uGlobalOpen.value = openSmooth;
+
+      // Saat user mengetik / klik aksi, mobil juga berakselerasi lebih gesit
+      extraCarPhase += dt * (openSmooth * 0.65 + keyPulse * 0.55 + actionBurst * 0.85);
 
       const omega = TAU / 8.0;
-      const carAngle = t * omega + 0.65 * Math.PI;
+      const carAngle = t * omega + extraCarPhase + 0.65 * Math.PI;
 
+      // 1. Jika openSmooth > 0.01 ("PAS LAGI NGETIK, SEMUA KOTAK ITU KEBUKA"):
+      //    Seluruh kotak palet di panggung (termasuk ring tengah & sekelilingnya) membuka/terangkat
+      //    secara mekanis membentuk gelombang radial dengan celah neon ungu-magenta menyala!
+      if (openSmooth > 0.005) {
+        for (const p of allPalletList) {
+          const { ix, iz, distRing } = p.userData;
+          // Jaga palet di pojok kiri-atas belakang teks agar tidak menabrak teks judul
+          const inStage = distRing <= 2.65 && !(ix < -1.2 && iz > 0.8);
+          if (inStage) {
+            const wavePhase = t * 3.8 - distRing * 1.45 + (ix - iz) * 0.55;
+            const wave = 0.5 + 0.5 * Math.sin(wavePhase);
+            const pulseAdd = keyPulse * 0.12 * Math.cos(distRing * 2.0 - rawT * 8.0);
+            const openLift = openSmooth * (0.14 + 0.16 * wave + Math.max(0, pulseAdd));
+            const openTiltX = openSmooth * Math.sin(wavePhase) * 0.075 * (ix >= 0 ? 1 : -1);
+            const openTiltZ = openSmooth * Math.cos(wavePhase) * 0.075 * (iz >= 0 ? -1 : 1);
+            // Kotak-kotak di bagian kanan/atas juga sedikit berputar membuka saat mengetik
+            const openRot = (distRing > 1.0 && ix >= -0.5 && iz <= 0.5)
+              ? openSmooth * Math.sin(t * 2.0 + ix + iz) * 0.28
+              : 0;
+            p.position.y = openLift;
+            p.rotation.set(openTiltX, p.userData.baseRot + openRot, openTiltZ);
+          } else {
+            p.position.y = 0;
+            p.rotation.set(0, p.userData.baseRot, 0);
+          }
+        }
+      } else {
+        for (const p of allPalletList) {
+          if (p.userData.distRing > 0.8) {
+            p.position.y = 0;
+            p.rotation.set(0, p.userData.baseRot, 0);
+          }
+        }
+      }
+
+      // 2. Siklus mekanis utama untuk 2 palet parit cekung (tetap aktif & berpadu mulus dengan efek ketikan):
       const rotVec = [0, 0];
 
       for (const item of RING_PALLETS) {
@@ -560,7 +674,7 @@ export default function Hero() {
           const u = (phase - winStart) / (winEnd - winStart);
 
           const liftProfile = smoothstep(0.0, 0.22, u) * (1.0 - smoothstep(0.78, 1.0, u));
-          const liftY = liftProfile * 0.30;
+          const liftY = Math.max(pObj.position.y, liftProfile * 0.30 + openSmooth * 0.08);
 
           let rot = 0;
           if (u < 0.20) {
@@ -577,18 +691,22 @@ export default function Hero() {
 
           const tilt = Math.sin(u * TAU) * liftProfile * 0.08;
           animasikanPalet(item.key, liftY, rot, tilt * item.tiltSignX, tilt * item.tiltSignZ);
-          uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, liftProfile * 1.30);
+          uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, Math.max(liftProfile * 1.30, openSmooth * 1.25));
           rotVec[item.idx] = rot;
         } else {
           if (item.key === '0.5,-0.5') {
-            const liftY = 0.095;
-            animasikanPalet(item.key, liftY, 0, 0, 0);
-            uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, 0.22);
-            rotVec[item.idx] = 0;
+            const baseStep = 0.095 + openSmooth * 0.16;
+            const liftY = Math.max(pObj.position.y, baseStep);
+            const rotOpen = openSmooth > 0.1 ? Math.sin(t * 2.6) * openSmooth * 0.35 : 0;
+            animasikanPalet(item.key, liftY, rotOpen, pObj.rotation.x, pObj.rotation.z);
+            uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, 0.22 + openSmooth * 1.10);
+            rotVec[item.idx] = rotOpen;
           } else {
-            animasikanPalet(item.key, 0, 0, 0, 0);
-            uniforms[uSlot].value.set(pObj.userData.gx, 0, pObj.userData.gz, 0);
-            rotVec[item.idx] = 0;
+            const liftY = Math.max(pObj.position.y, openSmooth * 0.24);
+            const rotOpen = openSmooth > 0.1 ? -Math.cos(t * 2.6) * openSmooth * 0.35 : 0;
+            animasikanPalet(item.key, liftY, rotOpen, pObj.rotation.x, pObj.rotation.z);
+            uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, openSmooth * 1.15);
+            rotVec[item.idx] = rotOpen;
           }
         }
       }
@@ -609,13 +727,13 @@ export default function Hero() {
       uniforms.uCarGroupPos.value.set(cxCar, palletLift - GD + 0.02, czCar);
 
       for (const wMesh of mobil.userData.wheels) {
-        wMesh.rotation.z = -t * 7.0;
+        wMesh.rotation.z = -(t * 7.0 + extraCarPhase * 4.0);
       }
 
       camera.position.set(
         camBase.x + mouse.x * 0.65,
-        camBase.y - mouse.y * 0.40,
-        camBase.z
+        camBase.y - mouse.y * 0.40 + openSmooth * 0.25,
+        camBase.z + openSmooth * 0.20
       );
       camera.lookAt(lookTarget);
 
@@ -626,6 +744,11 @@ export default function Hero() {
 
     return () => {
       cancelAnimationFrame(raf);
+      window.removeEventListener('focusin', onFocusIn);
+      window.removeEventListener('focusout', onFocusOut);
+      window.removeEventListener('input', onInputOrKey);
+      window.removeEventListener('keydown', onInputOrKey);
+      window.removeEventListener('parkir:aksi', onParkirAksi);
       removeEventListener('mousemove', onMove);
       removeEventListener('resize', onResize);
       renderer.dispose();

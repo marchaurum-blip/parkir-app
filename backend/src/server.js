@@ -37,6 +37,15 @@ app.post('/api/auth/login', wrap(async (req, res) => {
   res.json({ token, user: { id: u.id_user, nama: u.nama_lengkap, role: u.role } });
 }));
 
+// Info publik real-time untuk terhubung langsung dengan navigasi halaman depan
+app.get('/api/publik/info', wrap(async (_, res) => {
+  const [areas] = await db.query('SELECT * FROM tb_area_parkir');
+  const [tarifs] = await db.query('SELECT * FROM tb_tarif');
+  const [[aktif]] = await db.query("SELECT COUNT(*) total_aktif FROM tb_transaksi WHERE status='masuk'");
+  const [[rekap]] = await db.query("SELECT COUNT(*) total_selesai, COALESCE(SUM(biaya_total),0) pendapatan FROM tb_transaksi WHERE status='keluar'");
+  res.json({ areas, tarifs, total_aktif: aktif.total_aktif, total_selesai: rekap.total_selesai, pendapatan: rekap.pendapatan });
+}));
+
 // ---- CRUD generik ----
 function crud(path, table, pk, fields, roles, { hash } = {}) {
   app.get(`/api/${path}`, auth(), wrap(async (_, res) => {
