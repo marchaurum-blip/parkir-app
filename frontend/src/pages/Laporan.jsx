@@ -13,16 +13,33 @@ export default function Laporan() {
     a.download = 'rekap-parkir.csv'; a.click();
   };
   return (
-    <div>
-      <h3>Laporan Pendapatan</h3>
-      <input type="date" value={r.dari} onChange={(e) => setR({ ...r, dari: e.target.value })} />
-      <input type="date" value={r.sampai} onChange={(e) => setR({ ...r, sampai: e.target.value })} />
-      <button onClick={load}>Tampilkan</button>
-      <button onClick={() => window.print()}>Cetak</button>
-      <button onClick={exportCsv}>Export CSV</button>
-      <p>Total: <b>Rp{d.total}</b></p>
-      <table border="1" cellPadding="4"><tbody>{d.transaksi.map((t) => (
-        <tr key={t.id_parkir}><td>{t.plat_nomor}</td><td>{t.waktu_keluar}</td><td>{t.durasi_jam} jam</td><td>Rp{t.biaya_total}</td></tr>))}</tbody></table>
+    <div className="panel-card">
+      <h3>Rekapitulasi Transaksi & Pendapatan Parkir</h3>
+      <div className="form-row">
+        <input type="date" value={r.dari} onChange={(e) => setR({ ...r, dari: e.target.value })} />
+        <input type="date" value={r.sampai} onChange={(e) => setR({ ...r, sampai: e.target.value })} />
+        <button onClick={load}>Filter Tanggal</button>
+        <button className="btn-ghost" onClick={() => window.print()}>Cetak Rekap</button>
+        <button className="btn-ghost" onClick={exportCsv}>Export CSV</button>
+      </div>
+      <div className="stat-banner">
+        Total Pendapatan: <b>Rp{Number(d.total).toLocaleString('id-ID')}</b> ({d.transaksi.length} kendaraan selesai)
+      </div>
+      <table>
+        <thead>
+          <tr><th>Plat Nomor</th><th>Waktu Keluar</th><th>Durasi</th><th>Total Biaya</th></tr>
+        </thead>
+        <tbody>
+          {d.transaksi.map((t) => (
+            <tr key={t.id_parkir}>
+              <td><b>{t.plat_nomor}</b></td>
+              <td>{new Date(t.waktu_keluar).toLocaleString('id-ID')}</td>
+              <td>{t.durasi_jam} jam</td>
+              <td><b>Rp{Number(t.biaya_total).toLocaleString('id-ID')}</b></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

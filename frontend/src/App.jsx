@@ -51,7 +51,11 @@ export default function App() {
       </div>
       <div className="hero-body">
         <div className="hero-text">
-          <h1>The Smarter,<br />Automated<br />Smart Parking<br />System</h1>
+          <div className="hero-badge">
+            <span className="hero-badge-dot" />
+            <span>UKK RPL Paket 2 • Smart Parking</span>
+          </div>
+          <h1>The Smarter,<br /><span className="hero-grad">Automated</span><br />Smart Parking<br />System</h1>
           <p>Kelola kendaraan masuk & keluar, tarif per jam otomatis, dan rekapitulasi pendapatan real-time sesuai SPK.</p>
           <form onSubmit={login} className="login-card">
             <input ref={userRef} placeholder="Username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
@@ -70,14 +74,18 @@ export default function App() {
   return (
     <div>
       <div className="app-nav">
-        <div className="brand" style={{ marginRight: 12 }}>
+        <div className="brand" style={{ marginRight: 14 }}>
           <span className="brand-gem" />
           <span>parkir</span>
         </div>
-        {menu.map((m) => <button key={m} onClick={() => setTab(m)} disabled={m === cur}>{m}</button>)}
+        {menu.map((m) => (
+          <button key={m} className={m === cur ? '' : 'btn-ghost'} onClick={() => setTab(m)} disabled={m === cur}>
+            {m}
+          </button>
+        ))}
         <span className="sp" />
-        <span>{user.nama} ({user.role})</span>
-        <button onClick={logout}>Logout</button>
+        <span className="role-chip">{user.nama} • {user.role.toUpperCase()}</span>
+        <button className="btn-danger" onClick={logout}>Logout</button>
       </div>
       <div className="app-main"><Page /></div>
     </div>

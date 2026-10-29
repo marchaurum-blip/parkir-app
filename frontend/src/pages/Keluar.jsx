@@ -18,15 +18,23 @@ export default function Keluar() {
     catch (x) { setMsg(x.message); }
   };
   return (
-    <div>
-      <h3>Kendaraan Keluar</h3>
-      <form onSubmit={cari}>
-        <input placeholder="Plat nomor / kode parkir" value={q} onChange={(e) => setQ(e.target.value)} required />
-        <button>Hitung Tarif</button>
+    <div className="panel-card">
+      <h3>Check-Out & Pembayaran Parkir</h3>
+      <form onSubmit={cari} className="form-row">
+        <input placeholder="Masukkan Plat Nomor / Kode Karcis" value={q} onChange={(e) => setQ(e.target.value)} required />
+        <button>Hitung Tarif Keluar</button>
       </form>
-      {hit && <p>{hit.plat_nomor}: {hit.durasi_jam} jam = <b>Rp{hit.biaya_total}</b> <button onClick={bayar}>Bayar & Selesai</button></p>}
-      {struk && <Struk jenis="keluar" data={struk} />}
-      <b style={{ color: 'red' }}>{msg}</b>
+      {hit && (
+        <div className="stat-banner">
+          Kendaraan <b>{hit.plat_nomor}</b> • Durasi <b>{hit.durasi_jam} jam</b> • Total Tagihan:{' '}
+          <b>Rp{Number(hit.biaya_total).toLocaleString('id-ID')}</b>{' '}
+          <button onClick={bayar} style={{ marginLeft: 12, background: '#f59e0b', color: '#16113a' }}>
+            Bayar & Selesaikan
+          </button>
+        </div>
+      )}
+      {struk && <div style={{ marginTop: 16 }}><Struk jenis="keluar" data={struk} /></div>}
+      {msg && <p style={{ color: '#e11d48', fontWeight: 700 }}>{msg}</p>}
     </div>
   );
 }

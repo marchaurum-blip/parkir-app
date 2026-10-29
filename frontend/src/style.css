@@ -1,50 +1,101 @@
-/* Tampilan Aplikasi Parkir - terinspirasi referensi AICM 3D. Dibuat dengan bantuan Antigravity CLI. */
+/* Tampilan Aplikasi Parkir - Tema Lavender-Pearl & Cyber Violet Neon. Dibuat dengan bantuan Antigravity CLI. */
 :root {
-  --ungu: #6d4aff;
+  --ungu: #6d28d9;
+  --ungu-terang: #9333ea;
+  --magenta: #db2777;
+  --emas: #f59e0b;
   --teks: #16113a;
-  --abu: #4c4668;
+  --abu: #524b70;
+  --kartu: rgba(255, 255, 255, 0.86);
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
   font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   color: var(--teks);
-  background: #d2cbe8;
+  background: radial-gradient(circle at 80% 10%, #f5f0ff 0%, #dcd4f5 55%, #cbc2eb 100%);
+  min-height: 100vh;
 }
 button {
-  background: var(--ungu);
+  background: linear-gradient(135deg, #5b21b6 0%, #9333ea 60%, #c026d3 100%);
   color: #fff;
   border: 0;
-  border-radius: 8px;
-  padding: 8px 14px;
+  border-radius: 10px;
+  padding: 9px 16px;
   font-weight: 600;
+  font-size: 13px;
   cursor: pointer;
   margin: 2px;
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
-button:disabled { background: #cfc7ff; cursor: default; }
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(147, 51, 234, 0.38);
+}
+button:disabled {
+  background: #16113a;
+  color: #fff;
+  box-shadow: none;
+  cursor: default;
+}
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--teks);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  box-shadow: none;
+}
+.btn-danger {
+  background: linear-gradient(135deg, #be123c 0%, #e11d48 100%);
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.25);
+}
 input, select {
-  padding: 8px 11px;
-  border: 1px solid #d9d4f5;
-  border-radius: 8px;
+  padding: 9px 12px;
+  border: 1px solid #d5cdf0;
+  border-radius: 10px;
   margin: 2px;
-  font-size: 13px;
+  font-size: 13.5px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--teks);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus, select:focus {
+  border-color: #9333ea;
+  box-shadow: 0 0 0 3px rgba(147, 51, 234, 0.16);
 }
 table {
+  width: 100%;
   border-collapse: collapse;
-  background: #fff;
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 14px;
   overflow: hidden;
-  margin-top: 10px;
-  box-shadow: 0 6px 20px rgba(22, 17, 58, 0.06);
+  margin-top: 14px;
+  box-shadow: 0 10px 30px rgba(22, 17, 58, 0.07);
 }
-td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
+th {
+  background: linear-gradient(90deg, #1e1646 0%, #3b1d7a 100%);
+  color: #fff;
+  text-align: left;
+  font-size: 12.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 11px 14px;
+}
+td {
+  border-bottom: 1px solid #eeeafc;
+  padding: 10px 14px;
+  font-size: 13.5px;
+}
+tr:last-child td { border-bottom: 0; }
+tr:hover td { background: rgba(243, 238, 255, 0.55); }
 
 /* Landing Hero 3D */
 .hero {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  background: #d2cbe8;
+  background: #c4bce4;
 }
 .scene3d {
   position: absolute;
@@ -64,7 +115,7 @@ td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 22px;
   letter-spacing: -0.02em;
   color: var(--teks);
@@ -74,8 +125,8 @@ td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
   height: 26px;
   border-radius: 6px;
   transform: rotate(45deg);
-  background: linear-gradient(135deg, #4c1d95 0%, #9333ea 55%, #f472b6 100%);
-  box-shadow: 0 4px 12px rgba(147, 51, 234, 0.35);
+  background: linear-gradient(135deg, #4c1d95 0%, #9333ea 52%, #f43f5e 100%);
+  box-shadow: 0 4px 14px rgba(147, 51, 234, 0.42);
 }
 .nav-links {
   display: flex;
@@ -91,7 +142,7 @@ td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
   padding: 9px 20px;
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 6px 18px rgba(22, 17, 58, 0.08);
+  box-shadow: 0 6px 18px rgba(22, 17, 58, 0.10);
 }
 
 .hero-body {
@@ -108,45 +159,68 @@ td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
   max-width: 390px;
   pointer-events: auto;
 }
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(147, 51, 234, 0.25);
+  color: #5b21b6;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-bottom: 14px;
+  backdrop-filter: blur(8px);
+}
+.hero-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #ec4899);
+}
 .hero-text h1 {
   color: #16113a;
   font-size: clamp(34px, 4.1vw, 50px);
   font-weight: 800;
-  line-height: 1.08;
+  line-height: 1.07;
   letter-spacing: -0.03em;
-  margin: 0 0 16px;
+  margin: 0 0 14px;
+}
+.hero-grad {
+  background: linear-gradient(135deg, #4c1d95 0%, #9333ea 55%, #db2777 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 .hero-text p {
   color: var(--abu);
   font-size: 14px;
   line-height: 1.55;
-  margin: 0 0 22px;
-  max-width: 320px;
+  margin: 0 0 20px;
+  max-width: 330px;
 }
 .login-card {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(14px);
   padding: 10px 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 12px 32px rgba(22, 17, 58, 0.08);
-  max-width: 350px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 36px rgba(22, 17, 58, 0.10), 0 0 24px rgba(168, 85, 247, 0.14);
+  max-width: 360px;
 }
 .login-card input {
-  flex: 1 1 110px;
+  flex: 1 1 108px;
   min-width: 0;
   margin: 0;
-  background: rgba(255, 255, 255, 0.92);
 }
 .login-card button {
   margin: 0;
-  padding: 8px 16px;
-  background: #16113a;
-  border-radius: 9px;
+  padding: 9px 16px;
+  border-radius: 10px;
 }
 .login-err {
   width: 100%;
@@ -160,10 +234,79 @@ td, th { border: 1px solid #ece9fb !important; padding: 8px 12px; }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 24px;
-  background: #fff;
-  box-shadow: 0 2px 12px rgba(109, 74, 255, 0.08);
+  padding: 14px 32px;
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(147, 51, 234, 0.14);
+  box-shadow: 0 4px 20px rgba(22, 17, 58, 0.05);
 }
 .app-nav .sp { flex: 1; }
-.app-main { padding: 24px; }
+.role-chip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12), rgba(219, 39, 119, 0.12));
+  color: #5b21b6;
+  font-weight: 700;
+  font-size: 12.5px;
+  margin-right: 6px;
+}
+.app-main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px 24px;
+}
+.panel-card {
+  background: var(--kartu);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
+  padding: 22px 24px;
+  box-shadow: 0 14px 36px rgba(22, 17, 58, 0.07);
+  margin-bottom: 20px;
+}
+.panel-card h3 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.area-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.area-item {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e9e3fc;
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.area-bar {
+  height: 7px;
+  background: #ede9fe;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.area-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #ec4899);
+  border-radius: 999px;
+}
+.stat-banner {
+  display: inline-block;
+  padding: 12px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1e1646 0%, #4c1d95 60%, #9333ea 100%);
+  color: #fff;
+  font-size: 16px;
+  margin: 12px 0;
+  box-shadow: 0 10px 24px rgba(91, 33, 182, 0.25);
+}
 @media print { .app-nav { display: none; } }
