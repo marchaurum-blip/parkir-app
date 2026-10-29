@@ -1,8 +1,8 @@
-// Hero 3D (Three.js - Modular Rotating Groove Pallets + GT Coupe):
-// Setiap palet persegi memiliki pahatan busur cekung 90 derajat (quarter-circle concave groove)
-// di sudut lokalnya. Saat 4 palet di tengah menghadap ke pusat, keempat busur membentuk bulatan
-// cekung utuh. Saat palet-palet terangkat dan berputar (disertai pendaran neon ungu-magenta
-// dari celah bawah dinding sampingnya), bulatan cekung ikut berubah menjadi huruf C atau S-curve.
+// Hero 3D (Three.js - Continuous Cyclic Rotating Groove Pallets + GT Coupe):
+// Setiap palet persegi memiliki pahatan busur cekung 90 derajat di sudut lokalnya.
+// Gerakan mobil dan putaran keempat palet dikendalikan oleh fase sudut siklis kontinu
+// (modulo 2*PI dengan rotasi 0 -> PI -> 2*PI yang ekuivalen dengan 0), sehingga
+// animasi berjalan 100% siklis (seamless infinite loop) tanpa pernah melompat/mengulang kasar.
 // Dibuat dengan bantuan Antigravity CLI.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
@@ -12,10 +12,11 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 const S = 2.86;        // Ukuran sisi tiap palet persegi
 const GAP = 0.024;     // Celah nat antar palet
 const STEP = S + GAP;  // Jarak antar pusat palet
-const H = 0.62;        // Ketebalan palet (cukup tebal di bawah dasar parit agar bawahnya padat)
+const H = 0.62;        // Ketebalan palet
 const R_ARC = 1.92;    // Jari-jari busur cekung dari sudut palet
 const GW = 0.52;       // Setengah lebar parit cekung
-const GD = 0.34;       // Kedalaman parit cekung (H - GD = 0.28m tebal padat di bawah dasar parit)
+const GD = 0.34;       // Kedalaman parit cekung
+const TAU = Math.PI * 2;
 
 function smoothstep(edge0, edge1, x) {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
@@ -56,7 +57,6 @@ function kedalamanParitLokal(x, z) {
   return -GD * prof;
 }
 
-// Membuat geometri 3D palet persegi dengan busur parit cekung lokal + normal analitik
 function buatGeometriPalet(hasGroove = true) {
   const segXZ = hasGroove ? 84 : 4;
   const segY = hasGroove ? 10 : 1;
@@ -81,7 +81,6 @@ function buatGeometriPalet(hasGroove = true) {
 
     const gDrop = hasGroove ? kedalamanParitLokal(x, z) : 0;
 
-    // Dasar palet (-halfH) tetap rata, sedangkan bagian atas turun mengikuti parit cekung
     const uy = (y + halfH) / H;
     const newY = -halfH + uy * (H + gDrop + edgeDrop);
     pos.setY(i, newY);
@@ -105,7 +104,6 @@ function buatGeometriPalet(hasGroove = true) {
   return geo;
 }
 
-// Mobil konsep GT Coupe 3D metalik (menggantikan koin emas di referensi)
 function buatMobilGT() {
   const root = new THREE.Group();
 
@@ -292,14 +290,12 @@ export default function Hero() {
     const geoGrooved = buatGeometriPalet(true);
     const geoFlat = buatGeometriPalet(false);
 
-    // Dasar rongga neon ungu-magenta jauh di bawah palet (-H + 0.02)
     const matNeonFloor = new THREE.MeshBasicMaterial({ color: 0xd926ff });
     const neonBase = new THREE.Mesh(new THREE.PlaneGeometry(STEP * 3.2, STEP * 3.2), matNeonFloor);
     neonBase.rotation.x = -Math.PI / 2;
     neonBase.position.y = -H + 0.02;
     worldGroup.add(neonBase);
 
-    // Susun grid 9x9 palet persegi agar menutupi seluruh layar hingga sudut kiri-atas tanpa celah
     const pallets = {};
     for (let gx = -5; gx <= 4; gx++) {
       for (let gz = -5; gz <= 4; gz++) {
@@ -325,8 +321,6 @@ export default function Hero() {
         mesh.receiveShadow = true;
         pivot.add(mesh);
 
-        // Strip neon ungu-magenta ditaruh di bagian paling bawah dinding palet (-H + 0.04)
-        // jauh di bawah dasar parit (-GD = -0.34), sehingga hanya terlihat dari celah samping bawah saat palet terangkat!
         if (hasGroove) {
           const matRimNeon = new THREE.MeshBasicMaterial({ color: 0xe62eff });
           const neonSkirt = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.08, S - 0.02), matRimNeon);
@@ -387,73 +381,64 @@ export default function Hero() {
       }
     };
 
+    // Daftar 4 palet utama beserta sudut kuadrannya di lingkaran:
+    // Setiap palet terangkat dan berputar 360 derajat (0 -> PI -> 2*PI) secara mulus
+    // tepat ketika mobil berada di belahan lingkaran seberangnya!
+    // Karena 2*PI secara geometris identik dengan 0, maka saat palet mendarat kembali,
+    // tidak pernah ada lompatan/reset sama sekali (100% siklis kontinu!).
+    const RING_PALLETS = [
+      { key: '0.5,0.5',   quadAngle: 0.25 * Math.PI, tiltSignX: -1, tiltSignZ: -1 },
+      { key: '-0.5,0.5',  quadAngle: 0.75 * Math.PI, tiltSignX:  1, tiltSignZ:  1 },
+      { key: '-0.5,-0.5', quadAngle: 1.25 * Math.PI, tiltSignX:  1, tiltSignZ: -1 },
+      { key: '0.5,-0.5',  quadAngle: 1.75 * Math.PI, tiltSignX: -1, tiltSignZ:  1 },
+    ];
+
     let raf;
     const loop = () => {
       const t = FIX ?? clock.getElapsedTime();
 
-      for (const key of ['0.5,0.5', '-0.5,0.5', '-0.5,-0.5', '0.5,-0.5', '-0.5,-1.5', '0.5,-1.5']) {
-        animasikanPalet(key, 0, 0, 0, 0);
-      }
+      // 1. Sudut mobil bertambah secara linear & kontinu tanpa pemotongan if/else (tidak pernah melompat!)
+      // Kecepatan: 1 putaran penuh setiap 8 detik
+      const omega = TAU / 8.0;
+      const carAngle = t * omega + 0.65 * Math.PI;
 
-      // Sinkronisasi penuh antara putaran palet dan posisi mobil di bulatan cekung:
-      //Siklus 12 detik = 1 putaran penuh mobil mengelilingi bulatan atau S-curve
-      const cycle = ((t % 12) + 12) % 12;
-      let carAngle = 0;
+      // 2. Evaluasi gelombang siklis untuk keempat palet utama
+      for (const item of RING_PALLETS) {
+        // Selisih fase sudut antara mobil dan pusat kuadran palet (selalu di [0 .. 2*PI))
+        const phase = (((carAngle - item.quadAngle) % TAU) + TAU) % TAU;
 
-      if (cycle < 4.0) {
-        // Fase A (0..4s): Mobil melaju di separuh bawah-kiri (dari sudut +0.35*PI ke +1.35*PI),
-        // sementara Palet Kanan-Atas ('0.5,-0.5', kuadran -0.5*PI..0) terangkat & berputar 180->0 derajat
-        // disertai pendaran neon ungu dari bawahnya, lalu mendarat rata membentuk bulatan!
-        const u = cycle / 4.0;
-        carAngle = (0.35 + u * 1.0) * Math.PI;
+        // Ketika phase berada di jendela [0.65*PI .. 1.55*PI], mobil sedang berada di seberang palet ini.
+        // Palet ini terangkat mulus, berputar 0 -> PI (membentuk S-curve/C-shape) -> 2*PI (kembali bulatan), lalu mendarat!
+        const winStart = 0.65 * Math.PI;
+        const winEnd = 1.55 * Math.PI;
 
-        const bell = Math.sin(u * Math.PI);
-        const rot = (1 - smoothstep(0.0, 0.85, u)) * Math.PI;
-        animasikanPalet('0.5,-0.5', bell, rot, bell * 0.18, -bell * 0.14);
+        if (phase > winStart && phase < winEnd) {
+          const u = (phase - winStart) / (winEnd - winStart); // 0 .. 1 kontinu
+          const s = Math.sin(u * Math.PI);
+          const lift = s * s; // C^1 smooth: mulai dari 0 dengan turunan 0, naik ke 1, kembali ke 0 dengan turunan 0
 
-        const b2 = Math.sin(Math.min(1, u * 1.5) * Math.PI) * 0.42;
-        animasikanPalet('0.5,0.5', b2, 0, 0, -b2 * 0.10);
-      } else if (cycle < 8.0) {
-        // Fase B (4..8s): Keempat palet menyatu membentuk BULATAN CEKUNG PENUH (seperti g08.jpg).
-        // Mobil melintas di separuh atas-kanan (dari +1.35*PI ke +2.35*PI),
-        // sementara Palet Kiri-Bawah ('-0.5,0.5') di belakang mobil sedikit terangkat memancarkan neon ungu!
-        const u = (cycle - 4.0) / 4.0;
-        carAngle = (1.35 + u * 1.0) * Math.PI;
+          // Putaran 2 tahap yang mulus dari 0 -> PI (tahan sebentar agar S-curve terlihat jelas) -> 2*PI:
+          let rot = 0;
+          if (u < 0.42) {
+            rot = smoothstep(0.0, 0.42, u) * Math.PI;
+          } else if (u < 0.58) {
+            rot = Math.PI;
+          } else {
+            rot = Math.PI + smoothstep(0.58, 1.0, u) * Math.PI;
+          }
 
-        const bell = Math.sin(u * Math.PI) * 0.62;
-        animasikanPalet('-0.5,0.5', bell, bell * 0.20, bell * 0.14, bell * 0.14);
-      } else {
-        // Fase C (8..12s): Mobil berada di kuadran kanan-bawah (+0.15*PI .. +0.85*PI),
-        // sementara Palet Kiri-Atas ('-0.5,-0.5') di seberangnya terangkat & berputar 180 derajat
-        // sehingga busur cekungnya berbalik arah menyambung ke Palet Atas ('-0.5,-1.5') membentuk JALUR S-CURVE (g05.jpg)!
-        const u = (cycle - 8.0) / 4.0;
-        carAngle = (0.15 + u * 0.70) * Math.PI;
-
-        let rotProgress = 0;
-        let lift = 0;
-        if (u < 0.35) {
-          const k = smoothstep(0.0, 0.35, u);
-          rotProgress = k;
-          lift = Math.sin(k * Math.PI);
-        } else if (u < 0.70) {
-          rotProgress = 1.0;
-          lift = 0.22;
+          const tilt = Math.sin(u * TAU) * s * 0.16;
+          animasikanPalet(item.key, lift, rot, tilt * item.tiltSignX, tilt * item.tiltSignZ);
         } else {
-          const k = smoothstep(0.70, 1.0, u);
-          rotProgress = 1.0 - k;
-          lift = Math.sin(k * Math.PI);
+          animasikanPalet(item.key, 0, 0, 0, 0);
         }
-        animasikanPalet('-0.5,-0.5', lift, rotProgress * Math.PI, lift * 0.16, lift * 0.14);
       }
 
+      // 3. Posisi & orientasi mobil mengikuti bulatan cekung secara kontinu
       const cxCar = Math.cos(carAngle) * R_ARC;
       const czCar = Math.sin(carAngle) * R_ARC;
 
-      const curKey = `${cxCar >= 0 ? 0.5 : -0.5},${czCar >= 0 ? 0.5 : -0.5}`;
-      const curPallet = pallets[curKey];
-      const palletLift = curPallet ? curPallet.position.y : 0;
-
-      mobil.position.set(cxCar, palletLift - GD + 0.02, czCar);
+      mobil.position.set(cxCar, -GD + 0.02, czCar);
       const tangentYaw = -carAngle - Math.PI / 2;
       mobil.rotation.set(0, tangentYaw, 0.15);
 
