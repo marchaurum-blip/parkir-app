@@ -1,17 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { buatKota } from '../dunia3d.js';
+
+const tanggalLokal = (w) => new Date(w).toLocaleDateString('sv-SE');
+const HARI_KOTA = 14;
+
+// Pendapatan per hari untuk gedung-gedung di kota, hari kosong tetap dapat tempat
+function rekapHarian(transaksi) {
+  const hari = [...Array(HARI_KOTA).keys()].reverse().map((i) => {
+    const t = new Date();
+    t.setDate(t.getDate() - i);
+    return { tanggal: tanggalLokal(t), label: `${t.getDate()}/${t.getMonth() + 1}`, total: 0, jumlah: 0, hariIni: i === 0 };
+  });
+  transaksi.forEach((x) => {
+    const h = hari.find((a) => a.tanggal === tanggalLokal(x.waktu_keluar));
+    if (h) { h.total += Number(x.biaya_total); h.jumlah += 1; }
+  });
+  return hari.filter((h, i) => h.jumlah || i === HARI_KOTA - 1);
+}
 
 export default function Laporan() {
   const [d, setD] = useState({ total: 0, transaksi: [] });
   const [info, setInfo] = useState(null);
   const [r, setR] = useState({ dari: '', sampai: '' });
 
-  const load = () => {
-    api(`/laporan?dari=${r.dari}&sampai=${r.sampai}`).then(setD);
+  const panggung = useRef(null);
+  const kota = useRef(null);
+  const rentang = useRef(r);
+  rentang.current = r;
+
+  const load = (rentang = r) => {
+    api(`/laporan?dari=${rentang.dari}&sampai=${rentang.sampai}`).then(setD);
     api('/publik/info').then(setInfo).catch(() => {});
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Klik gedung = lihat transaksi hari itu, klik lagi = semua
+    kota.current = buatKota(panggung.current, {
+      onPilih: (tanggal) => {
+        const baru = rentang.current.dari === tanggal && rentang.current.sampai === tanggal ? { dari: '', sampai: '' } : { dari: tanggal, sampai: tanggal };
+        setR(baru);
+        load(baru);
+        kota.current?.pilih(baru.dari);
+      },
+    });
+    api('/laporan').then((x) => kota.current?.perbarui(rekapHarian(x.transaksi))).catch(() => {});
+    return () => kota.current?.hapus();
+  }, []);
 
   const exportCsv = () => {
     const rows = [
@@ -25,57 +61,42 @@ export default function Laporan() {
   };
 
   return (
+    <>
+    <div className="panggung" ref={panggung} />
     <div className="panel-card">
-      <h3>👑 Dashboard Owner • Rekapitulasi Transaksi & Pendapatan</h3>
+      <h3>Laporan Pendapatan</h3>
       <div className="form-row">
         <input type="date" value={r.dari} onChange={(e) => setR({ ...r, dari: e.target.value })} />
         <input type="date" value={r.sampai} onChange={(e) => setR({ ...r, sampai: e.target.value })} />
-        <button
-          onClick={() => {
-            load();
-            window.dispatchEvent(new CustomEvent('parkir:aksi', { detail: { aksi: 'filter-laporan' } }));
-          }}
-        >
-          Filter Tanggal
-        </button>
-        <button className="btn-ghost" onClick={() => window.print()}>
-          🖨️ Cetak Rekap
-        </button>
-        <button className="btn-ghost" onClick={exportCsv}>
-          📥 Export CSV
-        </button>
+        <button onClick={() => { load(); kota.current?.pilih(r.dari === r.sampai ? r.dari : ''); }}>Filter Tanggal</button>
+        <button className="btn-ghost" onClick={() => window.print()}>Cetak Rekap</button>
+        <button className="btn-ghost" onClick={exportCsv}>Export CSV</button>
       </div>
 
-      <div className="area-grid" style={{ marginTop: 14, marginBottom: 8 }}>
+      <div className="area-grid">
         <div className="area-item">
-          <div style={{ fontSize: 12, color: '#524b70', fontWeight: 600 }}>TOTAL PENDAPATAN PERIODE</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#5b21b6', marginTop: 4 }}>
-            Rp{Number(d.total).toLocaleString('id-ID')}
-          </div>
+          <div className="stat-label">Total pendapatan periode</div>
+          <div className="stat-nilai">Rp{Number(d.total).toLocaleString('id-ID')}</div>
         </div>
         <div className="area-item">
-          <div style={{ fontSize: 12, color: '#524b70', fontWeight: 600 }}>TRANSAKSI SELESAI</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#9333ea', marginTop: 4 }}>
-            {d.transaksi.length} Kendaraan
-          </div>
+          <div className="stat-label">Transaksi selesai</div>
+          <div className="stat-nilai">{d.transaksi.length}</div>
         </div>
         <div className="area-item">
-          <div style={{ fontSize: 12, color: '#524b70', fontWeight: 600 }}>KENDARAAN SEDANG PARKIR</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#db2777', marginTop: 4 }}>
-            {info ? info.total_aktif : 0} Unit Aktif
-          </div>
+          <div className="stat-label">Sedang parkir</div>
+          <div className="stat-nilai">{info ? info.total_aktif : 0}</div>
         </div>
       </div>
 
       {info && info.areas && (
-        <div className="area-grid" style={{ marginTop: 10 }}>
+        <div className="area-grid">
           {info.areas.map((a) => {
             const pct = a.kapasitas ? Math.min(100, Math.round((a.terisi / a.kapasitas) * 100)) : 0;
             return (
               <div key={a.id_area} className="area-item">
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700 }}>
+                <div className="area-judul">
                   <span>{a.nama_area}</span>
-                  <span style={{ color: '#7c3aed' }}>{a.terisi} / {a.kapasitas} slot ({pct}%)</span>
+                  <span className="area-angka">{a.terisi}/{a.kapasitas}</span>
                 </div>
                 <div className="area-bar">
                   <div className="area-fill" style={{ width: `${pct}%` }} />
@@ -111,5 +132,6 @@ export default function Laporan() {
         </tbody>
       </table>
     </div>
+    </>
   );
 }

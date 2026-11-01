@@ -1,24 +1,18 @@
-// Hero 3D Interaktif Penuh (Three.js - Calibrated Blender Shader + "Semua Kotak Kebuka" saat Mengetik/Aksi):
-// - Mengikuti referensi g02, g04, g06, g08 secara presisi (pencahayaan grazing sun, bayangan parit,
-//   bayangan jatuh memanjang, tekstur micro-terrazzo, dan garis lurus neon di bawah palet).
-// - Terhubung penuh dengan UI:
-//   * Saat user fokus / mengetik di input mana pun ("pas lagi ngetik, semua kotak itu kebuka"),
-//     seluruh kotak palet di sekeliling panggung terangkat & membuka secara mekanis dengan pendaran
-//     neon ungu-magenta di setiap tepi bawahnya, serta berdenyut mengikuti ketikan tombol!
-//   * Saat login (Owner / Petugas / Admin), pindah menu, atau transaksi Masuk/Keluar, panggung 3D
-//     merespons dengan gelombang pembukaan palet dan akselerasi mobil.
-// Dibuat dengan bantuan Antigravity CLI.
+// Hero 3D halaman depan (Three.js): lantai ubin berparit dengan mobil yang melintas.
+// Ubin bereaksi saat form difokus/diketik. Saat login, 4 ubin tengah turun dan kamera
+// menyelam ke lubangnya sebelum masuk ke denah basement. Hanya tampil sebelum login.
+// Kalau WebGL tidak tersedia, adegan dilewati dan CSS .scene3d-fallback yang tampil.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
-const S = 2.90;        // Ukuran sisi palet persegi
-const GAP = 0.022;     // Celah nat tipis antar palet
-const STEP = S + GAP;  // Jarak antar pusat palet
-const H = 0.92;        // Ketebalan palet
-const R_ARC = 1.94;    // Jari-jari busur cekung dari sudut palet
-const GW = 0.52;       // Setengah lebar parit cekung
-const GD = 0.38;       // Kedalaman parit cekung
+const S = 2.90;
+const GAP = 0.022;
+const STEP = S + GAP;
+const H = 0.92;
+const R_ARC = 1.94;
+const GW = 0.52;
+const GD = 0.38;
 const WORLD_ROT = -0.72;
 const WORLD_POS = new THREE.Vector3(2.38, 0, 0.15);
 const TAU = Math.PI * 2;
@@ -34,13 +28,13 @@ function kedalamanParitLokal(x, z) {
   const distArc = Math.abs(Math.hypot(x - cx, z - cz) - R_ARC);
   if (distArc >= GW) return 0;
   const nd = distArc / GW;
-  const prof = (1 - nd * nd) * smoothstep(1.0, 0.72, nd);
+  const prof = (1 - nd * nd) * smoothstep(1.0, 0.42, nd);
   return -GD * prof;
 }
 
-function buatGeometriPalet(hasGroove = true) {
-  const segXZ = hasGroove ? 96 : 8;
-  const segY = hasGroove ? 18 : 2;
+function buatGeometriPalet() {
+  const segXZ = 72;
+  const segY = 14;
   const geo = new THREE.BoxGeometry(S, H, S, segXZ, segY, segXZ);
 
   const pos = geo.attributes.position;
@@ -59,14 +53,13 @@ function buatGeometriPalet(hasGroove = true) {
     const dxEdge = Math.max(0, Math.abs(x) - (S / 2 - bevelEdge)) / bevelEdge;
     const dzEdge = Math.max(0, Math.abs(z) - (S / 2 - bevelEdge)) / bevelEdge;
     const edgeDrop = -0.011 * (dxEdge * dxEdge + dzEdge * dzEdge);
-
-    const gDrop = hasGroove ? kedalamanParitLokal(x, z) : 0;
+    const gDrop = kedalamanParitLokal(x, z);
 
     const uy = (y + halfH) / H;
     const newY = -H + uy * (H + gDrop + edgeDrop);
     pos.setY(i, newY);
 
-    if (ny0 > 0.5 && hasGroove) {
+    if (ny0 > 0.5) {
       const eps = 0.010;
       const hC = gDrop + edgeDrop;
       const hX = kedalamanParitLokal(x + eps, z) + edgeDrop;
@@ -108,11 +101,11 @@ const FRAG_PALLET = /* glsl */ `
   varying vec3 vOrigNorm;
 
   uniform vec3 uCarGroupPos;
-  uniform vec4 uSlab0; // Palet kanan (0.5, -0.5)
-  uniform vec4 uSlab1; // Palet atas  (-0.5, -0.5)
+  uniform vec4 uSlab0;
+  uniform vec4 uSlab1;
   uniform vec2 uSlabRot;
-  // Intensitas pembukaan seluruh kotak palet saat user mengetik / klik aksi ("semua kotak kebuka")
   uniform float uGlobalOpen;
+  uniform mat4 modelMatrix;
 
   float hash21(vec2 p) {
     p = fract(p * vec2(234.34, 435.345));
@@ -137,9 +130,15 @@ const FRAG_PALLET = /* glsl */ `
     return mat2(ca, -sa, sa, ca) * d;
   }
 
+  float tinggiParit(vec2 p) {
+    float nd = abs(length(p + vec2(1.45)) - 1.94) / 0.52;
+    if (nd >= 1.0) return 0.0;
+    return -0.38 * (1.0 - nd * nd) * (1.0 - smoothstep(0.42, 1.0, nd));
+  }
+
   float sdRotBox2D(vec2 p, vec2 c, float ang, vec2 hs) {
     vec2 rel = p - c;
-    float ca = cos(ang), sa = sin(-ang);
+    float ca = cos(-ang), sa = sin(-ang);
     vec2 q = abs(mat2(ca, -sa, sa, ca) * rel) - hs;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
   }
@@ -147,12 +146,18 @@ const FRAG_PALLET = /* glsl */ `
   void main() {
     vec3 N = normalize(vWorldNorm);
     vec2 gXZ = toGroupXZ(vWorldPos.xz);
+    float hParit = tinggiParit(vLocalPos.xz);
+    if (vOrigNorm.y > 0.5) {
+      float eps = 0.006;
+      vec2 grad = vec2(hParit - tinggiParit(vLocalPos.xz + vec2(eps, 0.0)),
+                       hParit - tinggiParit(vLocalPos.xz + vec2(0.0, eps))) / eps * 1.72;
+      N = normalize(mat3(modelMatrix) * vec3(grad.x, 1.0, grad.y));
+    }
 
-    float myLift = vWorldPos.y - vLocalPos.y;
+    float myLift = max(0.0, vWorldPos.y - vLocalPos.y);
     float isTopFace = step(0.5, vOrigNorm.y);
     float isSideWall = 1.0 - isTopFace;
 
-    // 1. ARAH SINAR MATAHARI SUDUT RENDAH DARI KANAN-ATAS LAYAR MENUJU JAM 8:20 (KIRI-BAWAH):
     vec3 L = normalize(vec3(0.91, 0.32, -0.26));
     vec2 sunDirWorld = normalize(L.xz);
     float caG = cos(0.72), saG = sin(0.72);
@@ -161,8 +166,7 @@ const FRAG_PALLET = /* glsl */ `
     vec3 V = normalize(cameraPosition - vWorldPos);
     vec3 H = normalize(L + V);
 
-    // 2. BAYANGAN TEGAS DI DALAM PARIT CEKUNG (GROOVE SELF-SHADOWING & TERMINATOR):
-    float grooveDepth = clamp((-vLocalPos.y) / 0.38, 0.0, 1.0) * isTopFace;
+    float grooveDepth = clamp(-hParit / 0.38, 0.0, 1.0) * isTopFace;
     float inGroove = smoothstep(0.012, 0.11, grooveDepth);
 
     float slopeDot = dot(N.xz, sunDirWorld);
@@ -170,7 +174,6 @@ const FRAG_PALLET = /* glsl */ `
     float sunWallBoost = smoothstep(0.08, 0.52, slopeDot) * inGroove;
     float grooveShadow = mix(1.0, rimShadow, inGroove);
 
-    // 3. BAYANGAN JATUH MEMANJANG DARI MOBIL KE ARAH JAM 8:20 (-sunDirGroup):
     vec2 toFragG = gXZ - uCarGroupPos.xz;
     float projAlong = dot(toFragG, -sunDirGroup);
     vec2 perpVec = toFragG - (-sunDirGroup) * clamp(projAlong, -0.08, 2.35);
@@ -183,7 +186,6 @@ const FRAG_PALLET = /* glsl */ `
                         * (1.0 - smoothstep(1.25, 2.25, projAlong));
     float carShadow = min(carContact, carLongShadow);
 
-    // 4. BAYANGAN JATUH DARI PALET YANG TERANGKAT KE LANTAI KIRI-BAWAHNYA:
     float slabCastShadow = 1.0;
     float halfS = 1.45;
 
@@ -202,7 +204,6 @@ const FRAG_PALLET = /* glsl */ `
 
     float sideWallShade = mix(1.0, 0.24 + 0.76 * clamp(dot(N.xz, sunDirWorld), 0.0, 1.0), isSideWall);
 
-    // 5. SPOTLIGHT DIAGONAL HANGAT DARI KANAN-ATAS KE TENGAH LINGKARAN:
     vec2 spotCenter = vec2(2.85, -1.55);
     float spotDist = length((vWorldPos.xz - spotCenter) * vec2(0.38, 0.52));
     float spotMask = smoothstep(7.2, 0.8, spotDist);
@@ -221,12 +222,11 @@ const FRAG_PALLET = /* glsl */ `
     float seamLine = 1.0 - smoothstep(0.003, 0.020, edgeDist);
     col *= (1.0 - grooveDepth * 0.08 - seamLine * 0.22);
 
-    if (myLift > 0.02) {
+    if (myLift > 0.015) {
       float topRim = smoothstep(0.028, 0.004, edgeDist) * smoothstep(-0.02, 0.0, vLocalPos.y);
       col = mix(col, vec3(1.0, 0.99, 1.0), topRim * 0.55);
     }
 
-    // 6. TEKSTUR PROSEDURAL HIGH-DPI (MATTE PLASTER GRAIN + SHARP TERRAZZO SPECKLES):
     float grain = (valueNoise(vWorldPos.xz * 90.0) - 0.5) * 0.024;
     col += grain;
 
@@ -238,19 +238,32 @@ const FRAG_PALLET = /* glsl */ `
       float dotR = (rnd > 0.945) ? 0.072 : 0.046;
       float spMask = 1.0 - smoothstep(dotR * 0.45, dotR, length(spFrac - dotOff));
       vec3 dotCol = (rnd > 0.93) ? vec3(0.18, 0.12, 0.34) : vec3(0.42, 0.36, 0.60);
-      col = mix(col, dotCol, spMask * 0.78);
+      col = mix(col, dotCol, spMask * 0.32);
     }
 
     float spec = pow(clamp(dot(N, H), 0.0, 1.0), 28.0) * 0.22 * totalShadow * spotMask;
     col += vec3(1.0, 0.98, 0.96) * spec;
 
-    float dCarG = length(gXZ - uCarGroupPos.xz);
-    col += vec3(1.0, 0.76, 0.24) * exp(-dCarG * 2.3) * 0.32 * (0.25 + 0.75 * grooveDepth);
-
-    // 7. GARIS LURUS NEON UNGU-MAGENTA DI BAWAH RUSUK PALET YANG TERANGKAT:
+    
     float neonViolet = 0.0;
     float neonMagenta = 0.0;
     float neonCore = 0.0;
+
+    if (myLift > 0.015 && isSideWall > 0.5) {
+      float liftInt = clamp(myLift * 4.5, 0.0, 1.45);
+      float hAboveFloor = vWorldPos.y;
+      float distTube = abs(hAboveFloor - 0.008);
+      float maxWallH = max(myLift * 0.42, 0.045);
+      float lowWallMask = 1.0 - smoothstep(maxWallH * 0.55, maxWallH, hAboveFloor);
+
+      float barCore = exp(-distTube * 50.0) * lowWallMask * step(-0.10, hAboveFloor);
+      float barMag  = exp(-distTube * 22.0) * lowWallMask * step(-0.24, hAboveFloor);
+      float barViol = exp(-distTube * 10.0) * (1.0 - smoothstep(maxWallH * 0.8, maxWallH * 1.4, hAboveFloor)) * step(-0.36, hAboveFloor);
+
+      neonCore    += barCore * liftInt * 1.55;
+      neonMagenta += barMag  * liftInt * 1.35;
+      neonViolet  += barViol * liftInt * 1.25;
+    }
 
     for (int k = 0; k < 2; k++) {
       vec4 sl = (k == 0) ? uSlab0 : uSlab1;
@@ -258,26 +271,9 @@ const FRAG_PALLET = /* glsl */ `
 
       if (sl.w > 0.01) {
         float sdBox = sdRotBox2D(gXZ, vec2(sl.x, sl.z), rotK, vec2(halfS));
-
         vec2 rel = gXZ - vec2(sl.x, sl.z);
         vec2 focusDir = (k == 1) ? normalize(vec2(0.32, 0.95)) : normalize(vec2(-0.62, 0.78));
-        float sideFocus = 0.25 + 0.75 * smoothstep(-0.45, 0.55, dot(normalize(rel + vec2(1e-4)), focusDir));
-
-        float isThisRaisedSlab = step(0.015, myLift) * (1.0 - step(0.08, abs(myLift - sl.y))) * step(abs(sdBox), 0.06);
-        if (isThisRaisedSlab > 0.5 && isSideWall > 0.5) {
-          float hAboveFloor = vWorldPos.y;
-          float distTube = abs(hAboveFloor - 0.005);
-          float maxWallH = sl.y * 0.34;
-          float lowWallMask = 1.0 - smoothstep(maxWallH * 0.55, maxWallH, hAboveFloor);
-
-          float barCore = exp(-distTube * 55.0) * lowWallMask * step(-0.08, hAboveFloor);
-          float barMag  = exp(-distTube * 24.0) * lowWallMask * step(-0.20, hAboveFloor);
-          float barViol = exp(-distTube * 11.0) * (1.0 - smoothstep(maxWallH * 0.8, maxWallH * 1.35, hAboveFloor)) * step(-0.32, hAboveFloor);
-
-          neonCore    += barCore * sl.w * sideFocus * 1.65;
-          neonMagenta += barMag  * sl.w * sideFocus * 1.40;
-          neonViolet  += barViol * sl.w * sideFocus * 1.25;
-        }
+        float sideFocus = 0.28 + 0.72 * smoothstep(-0.45, 0.55, dot(normalize(rel + vec2(1e-4)), focusDir));
 
         if (myLift < sl.y - 0.015 && sdBox > -0.025) {
           float distEdge = max(sdBox, 0.0);
@@ -294,27 +290,14 @@ const FRAG_PALLET = /* glsl */ `
       }
     }
 
-    // EFEK KHUSUS SAAT MENGETIK / AKSI ("SEMUA KOTAK ITU KEBUKA"):
-    // Setiap kotak palet yang ikut terangkat (myLift > 0.018) menyalakan garis neon lurus di rusuk bawahnya
-    // dan memendarkan cahaya ungu-magenta di celah nat antar kotak!
-    if (uGlobalOpen > 0.01) {
-      float liftStr = clamp(myLift * 4.5, 0.0, 1.35) * uGlobalOpen;
-      if (isSideWall > 0.5 && myLift > 0.018) {
-        float hAbove = vWorldPos.y;
-        float dTube = abs(hAbove - 0.005);
-        float maxWH = max(myLift * 0.38, 0.04);
-        float wMask = 1.0 - smoothstep(maxWH * 0.5, maxWH, hAbove);
-        neonCore    += exp(-dTube * 48.0) * wMask * liftStr * 1.45;
-        neonMagenta += exp(-dTube * 20.0) * wMask * liftStr * 1.25;
-        neonViolet  += exp(-dTube * 9.5)  * liftStr * 1.15;
-      }
-      // Pendaran neon di sepanjang garis nat (seam) semua kotak yang sedang terbuka
+    float extraGlow = uGlobalOpen;
+    if (extraGlow > 0.01) {
       float seamDist = max(edgeDist, 0.0);
-      float radialMask = smoothstep(9.5, 1.5, length(gXZ));
-      float seamGlow = uGlobalOpen * radialMask * (1.0 - step(0.10, myLift));
-      neonCore    += exp(-seamDist * 42.0) * seamGlow * 0.85;
-      neonMagenta += exp(-seamDist * 8.5)  * seamGlow * 0.95;
-      neonViolet  += exp(-seamDist * 2.8)  * seamGlow * 1.05;
+      float radialMask = smoothstep(10.5, 1.0, length(gXZ));
+      float seamGlow = extraGlow * radialMask * 0.45;
+      neonCore    += exp(-seamDist * 38.0) * seamGlow * 0.95;
+      neonMagenta += exp(-seamDist * 7.5)  * seamGlow * 1.05;
+      neonViolet  += exp(-seamDist * 2.4)  * seamGlow * 1.15;
     }
 
     neonViolet  = clamp(neonViolet, 0.0, 1.0);
@@ -322,22 +305,22 @@ const FRAG_PALLET = /* glsl */ `
     neonCore    = clamp(neonCore, 0.0, 1.0);
 
     vec3 colViolet  = vec3(0.31, 0.05, 0.86);
-    vec3 colMagenta = vec3(0.98, 0.07, 0.58);
+    vec3 colMagenta = vec3(0.49, 0.23, 0.93);
     vec3 colCore    = vec3(1.00, 0.90, 1.00);
 
     col = mix(col, colViolet,  neonViolet * 0.90);
     col = mix(col, colMagenta, neonMagenta * 0.92);
     col = mix(col, colCore,    neonCore);
 
-    if (uSlab1.w > 0.25 || uGlobalOpen > 0.3) {
-      float bStr = max(uSlab1.w, uGlobalOpen * 0.85);
+    if (uSlab1.w > 0.25 || extraGlow > 0.25) {
+      float bStr = max(uSlab1.w, extraGlow);
       vec2 beamOrigin = vec2(1.05, -0.45);
       vec2 beamDir = normalize(vec2(0.60, -0.80));
       vec2 toP = vWorldPos.xz - beamOrigin;
       float bAlong = dot(toP, beamDir);
       float bPerp  = length(toP - beamDir * bAlong);
       float beam = exp(-bPerp * bPerp * 3.8) * smoothstep(-0.8, 0.3, bAlong) * smoothstep(5.2, 0.6, bAlong);
-      col = mix(col, vec3(1.0, 0.97, 1.0), beam * clamp(bStr * 0.45, 0.0, 0.48));
+      col = mix(col, vec3(1.0, 0.97, 1.0), beam * clamp(bStr * 0.48, 0.0, 0.55));
     }
 
     gl_FragColor = vec4(col, 1.0);
@@ -350,14 +333,14 @@ function buatMobilGT() {
   const root = new THREE.Group();
 
   const matGold = new THREE.MeshPhysicalMaterial({
-    color: 0xfad161,
-    metalness: 0.86,
-    roughness: 0.12,
+    color: 0x241c3f,
+    metalness: 0.55,
+    roughness: 0.25,
     clearcoat: 1.0,
     clearcoatRoughness: 0.04,
   });
   const matCanopy = new THREE.MeshPhysicalMaterial({
-    color: 0x1c1236,
+    color: 0x0e0a1c,
     metalness: 0.35,
     roughness: 0.05,
     clearcoat: 1.0,
@@ -368,7 +351,7 @@ function buatMobilGT() {
     roughness: 0.28,
   });
   const matHeadlight = new THREE.MeshBasicMaterial({ color: 0xfffef2 });
-  const matTaillight = new THREE.MeshBasicMaterial({ color: 0xff2a85 });
+  const matTaillight = new THREE.MeshBasicMaterial({ color: 0x7c3aed });
 
   const s = new THREE.Shape();
   s.moveTo(1.04, 0.0);
@@ -425,6 +408,8 @@ function buatMobilGT() {
   return root;
 }
 
+// ---------- Cache Geometri Sportbike Detail Tinggi (Extrude & Multi-Part) ----------
+let MOTO_GEO = null;
 export default function Hero() {
   const ref = useRef(null);
 
@@ -432,25 +417,32 @@ export default function Hero() {
     const el = ref.current;
     let w = el.clientWidth, h = el.clientHeight;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    } catch {
+      el.classList.add('scene3d-fallback');
+      return;
+    }
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     renderer.setSize(w, h);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xbfb6df);
+    const bgSurface = new THREE.Color(0xbfb6df);
+    scene.background = bgSurface.clone();
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.75;
 
-    const camera = new THREE.PerspectiveCamera(25, w / h, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(25, w / h, 0.1, 140);
     const camBase = new THREE.Vector3(0.05, 8.3, 8.1);
-    const lookTarget = new THREE.Vector3(0.65, -0.20, 0.05);
+    const lookTargetBase = new THREE.Vector3(0.65, -0.20, 0.05);
     camera.position.copy(camBase);
-    camera.lookAt(lookTarget);
+    camera.lookAt(lookTargetBase);
 
     scene.add(new THREE.HemisphereLight(0xfff8f0, 0x7b6eb2, 0.95));
     const dirLight = new THREE.DirectionalLight(0xfff1de, 3.0);
@@ -476,8 +468,7 @@ export default function Hero() {
       uniforms,
     });
 
-    const geoGrooved = buatGeometriPalet(true);
-    const geoFlat = buatGeometriPalet(false);
+    const geoGrooved = buatGeometriPalet();
 
     const pallets = {};
     const allPalletList = [];
@@ -486,20 +477,18 @@ export default function Hero() {
         const ix = gx + 0.5;
         const iz = gz + 0.5;
 
-        let hasGroove = false;
+        const mx = ((gx % 2) + 2) % 2;
+        const mz = ((gz % 2) + 2) % 2;
         let baseRot = 0;
-
-        if (ix === 0.5 && iz === 0.5) { hasGroove = true; baseRot = 0; }
-        else if (ix === -0.5 && iz === 0.5) { hasGroove = true; baseRot = -Math.PI / 2; }
-        else if (ix === -0.5 && iz === -0.5) { hasGroove = true; baseRot = Math.PI; }
-        else if (ix === 0.5 && iz === -0.5) { hasGroove = true; baseRot = Math.PI / 2; }
-        else if (ix === -0.5 && iz === -1.5) { hasGroove = true; baseRot = 0; }
-        else if (ix === 0.5 && iz === -1.5) { hasGroove = true; baseRot = Math.PI; }
+        if (mx === 0 && mz === 0) baseRot = 0;
+        else if (mx === 1 && mz === 0) baseRot = -Math.PI / 2;
+        else if (mx === 1 && mz === 1) baseRot = Math.PI;
+        else baseRot = Math.PI / 2;
 
         const pivot = new THREE.Group();
         pivot.position.set(ix * STEP, 0, iz * STEP);
 
-        const mesh = new THREE.Mesh(hasGroove ? geoGrooved : geoFlat, matPallet);
+        const mesh = new THREE.Mesh(geoGrooved, matPallet);
         pivot.add(mesh);
 
         pivot.rotation.y = baseRot;
@@ -509,6 +498,7 @@ export default function Hero() {
         pivot.userData.gx = ix * STEP;
         pivot.userData.gz = iz * STEP;
         pivot.userData.distRing = Math.hypot(ix, iz);
+        pivot.userData.seedPhase = ((gx * 3 + gz * 5) & 7) * (TAU / 8);
         worldGroup.add(pivot);
 
         pallets[`${ix},${iz}`] = pivot;
@@ -519,15 +509,28 @@ export default function Hero() {
     const mobil = buatMobilGT();
     worldGroup.add(mobil);
 
+    // Cincin gelombang kejut neon di bawah mobil saat tombol dipencet / getaran aktif
+    const shockRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.45, 0.62, 32),
+      new THREE.MeshBasicMaterial({ color: 0x7c3aed, side: THREE.DoubleSide, transparent: true, opacity: 0.0 })
+    );
+    shockRing.rotation.x = -Math.PI / 2;
+    worldGroup.add(shockRing);
+
+    // Dasar lubang: warnanya sama dengan latar denah supaya perpindahannya menyambung
+    const dasarLubang = new THREE.Mesh(
+      new THREE.PlaneGeometry(STEP * 2, STEP * 2),
+      new THREE.MeshBasicMaterial({ color: 0xf6f5f9, toneMapped: false })
+    );
+    dasarLubang.rotation.x = -Math.PI / 2;
+    dasarLubang.position.y = -0.9;
+    dasarLubang.visible = false;
+    worldGroup.add(dasarLubang);
+
     const params = new URLSearchParams(location.search);
     const FIX = params.has('t') ? Number(params.get('t')) : null;
     const FORCE_OPEN = params.get('open') === '1';
 
-    // State interaktif yang menghubungkan seluruh input & tombol UI dengan panggung 3D:
-    // - isFocusedInput: aktif saat kursor berada di dalam input/select/textarea
-    // - typingHold: bertahan beberapa saat setiap kali user mengetik karakter ("pas lagi ngetik, semua kotak itu kebuka")
-    // - keyPulse: denyut gelombang mekanis setiap ketikan tombol
-    // - actionBurst: gelombang besar saat login (Owner/Petugas/Admin), pindah tab, atau simpan transaksi
     let isFocusedInput = false;
     let typingHold = FORCE_OPEN ? 999 : 0;
     let keyPulse = 0;
@@ -559,7 +562,12 @@ export default function Hero() {
         keyPulse = Math.min(keyPulse + 0.55, 1.5);
       }
     };
-    const onParkirAksi = () => {
+    let mulaiNyelam = -1;
+    const onParkirAksi = (e) => {
+      if (e?.detail?.aksi === 'nyelam') {
+        mulaiNyelam = clock.getElapsedTime();
+        return;
+      }
       actionBurst = 1.6;
       typingHold = Math.max(typingHold, 2.2);
       keyPulse = 1.3;
@@ -590,17 +598,28 @@ export default function Hero() {
     const clock = new THREE.Clock();
     let prevT = 0;
 
-    const animasikanPalet = (key, liftY, extraRotY, tiltX = 0, tiltZ = 0) => {
-      const p = pallets[key];
-      if (!p) return;
-      p.position.y = liftY;
-      p.rotation.set(tiltX, p.userData.baseRot + extraRotY, tiltZ);
-    };
-
     const RING_PALLETS = [
       { key: '0.5,-0.5',  quadAngle: 1.75 * Math.PI, tiltSignX: -1, tiltSignZ:  1, idx: 0 },
-      { key: '-0.5,-0.5', quadAngle: 0.90 * Math.PI, tiltSignX:  1, tiltSignZ: -1, idx: 1 },
+      { key: '-0.5,-0.5', quadAngle: 1.25 * Math.PI, tiltSignX:  1, tiltSignZ: -1, idx: 1 },
+      { key: '-0.5,0.5',  quadAngle: 0.75 * Math.PI, tiltSignX:  1, tiltSignZ:  1, idx: 2 },
+      { key: '0.5,0.5',   quadAngle: 0.25 * Math.PI, tiltSignX: -1, tiltSignZ: -1, idx: 3 },
     ];
+
+    const hitungSiklusUbin = (phase, winStart, winEnd, maxLift = 0.28) => {
+      if (phase <= winStart || phase >= winEnd) {
+        return { lift: 0, rot: 0, tilt: 0 };
+      }
+      const u = (phase - winStart) / (winEnd - winStart);
+      const lift = smoothstep(0.0, 0.20, u) * (1.0 - smoothstep(0.80, 1.0, u)) * maxLift;
+      let rot = 0;
+      if (u < 0.18) rot = 0;
+      else if (u < 0.45) rot = smoothstep(0.18, 0.45, u) * Math.PI;
+      else if (u < 0.55) rot = Math.PI;
+      else if (u < 0.82) rot = Math.PI + smoothstep(0.55, 0.82, u) * Math.PI;
+      else rot = TAU;
+      const tilt = Math.sin(u * TAU) * (lift / maxLift) * 0.065;
+      return { lift, rot, tilt };
+    };
 
     let raf;
     const loop = () => {
@@ -615,127 +634,121 @@ export default function Hero() {
         actionBurst = Math.max(0, actionBurst - dt * 0.9);
       }
 
-      const targetOpen = (FORCE_OPEN || isFocusedInput || typingHold > 0.05 || actionBurst > 0.05) ? 1.0 : 0.0;
+      const dive = mulaiNyelam < 0 ? 0 : Math.min(1, (rawT - mulaiNyelam) / 1.1);
+      const diveCam = smoothstep(0.18, 1, dive);
+      dasarLubang.visible = dive > 0;
+
+      const targetOpen = dive === 0 && (FORCE_OPEN || isFocusedInput || typingHold > 0.05 || actionBurst > 0.05) ? 1.0 : 0.0;
       openSmooth += (targetOpen - openSmooth) * (FORCE_OPEN ? 1.0 : Math.min(1.0, dt * 6.5));
       uniforms.uGlobalOpen.value = openSmooth;
 
-      // Saat user mengetik / klik aksi, mobil juga berakselerasi lebih gesit
       extraCarPhase += dt * (openSmooth * 0.65 + keyPulse * 0.55 + actionBurst * 0.85);
 
-      const omega = TAU / 8.0;
+      const omega = TAU / 8.5;
       const carAngle = t * omega + extraCarPhase + 0.65 * Math.PI;
 
-      // 1. Jika openSmooth > 0.01 ("PAS LAGI NGETIK, SEMUA KOTAK ITU KEBUKA"):
-      //    Seluruh kotak palet di panggung (termasuk ring tengah & sekelilingnya) membuka/terangkat
-      //    secara mekanis membentuk gelombang radial dengan celah neon ungu-magenta menyala!
-      if (openSmooth > 0.005) {
-        for (const p of allPalletList) {
-          const { ix, iz, distRing } = p.userData;
-          // Jaga palet di pojok kiri-atas belakang teks agar tidak menabrak teks judul
-          const inStage = distRing <= 2.65 && !(ix < -1.2 && iz > 0.8);
-          if (inStage) {
-            const wavePhase = t * 3.8 - distRing * 1.45 + (ix - iz) * 0.55;
-            const wave = 0.5 + 0.5 * Math.sin(wavePhase);
-            const pulseAdd = keyPulse * 0.12 * Math.cos(distRing * 2.0 - rawT * 8.0);
-            const openLift = openSmooth * (0.14 + 0.16 * wave + Math.max(0, pulseAdd));
-            const openTiltX = openSmooth * Math.sin(wavePhase) * 0.075 * (ix >= 0 ? 1 : -1);
-            const openTiltZ = openSmooth * Math.cos(wavePhase) * 0.075 * (iz >= 0 ? -1 : 1);
-            // Kotak-kotak di bagian kanan/atas juga sedikit berputar membuka saat mengetik
-            const openRot = (distRing > 1.0 && ix >= -0.5 && iz <= 0.5)
-              ? openSmooth * Math.sin(t * 2.0 + ix + iz) * 0.28
-              : 0;
-            p.position.y = openLift;
-            p.rotation.set(openTiltX, p.userData.baseRot + openRot, openTiltZ);
-          } else {
-            p.position.y = 0;
-            p.rotation.set(0, p.userData.baseRot, 0);
-          }
-        }
-      } else {
-        for (const p of allPalletList) {
-          if (p.userData.distRing > 0.8) {
-            p.position.y = 0;
-            p.rotation.set(0, p.userData.baseRot, 0);
-          }
-        }
+      // 1. ANIMASI SELURUH UBIN LUAR
+      for (const p of allPalletList) {
+        const { ix, iz, distRing, seedPhase } = p.userData;
+        if (distRing <= 0.8) continue;
+
+        const localPhase = (((t * (TAU / 9.0) + seedPhase) % TAU) + TAU) % TAU;
+        const cyc = hitungSiklusUbin(localPhase, 0.15 * TAU, 0.47 * TAU, 0.24);
+
+        const wavePhase = t * 3.6 - distRing * 1.35 + (ix - iz) * 0.55;
+        const wave = 0.5 + 0.5 * Math.sin(wavePhase);
+        const typeLift = openSmooth * (0.04 + 0.07 * wave);
+        const typeRot  = 0;
+
+        const finalLift = Math.max(cyc.lift, typeLift);
+        const finalRot  = cyc.rot + typeRot;
+        const finalTiltX = cyc.tilt * (ix >= 0 ? 1 : -1) + openSmooth * Math.sin(wavePhase) * 0.015;
+        const finalTiltZ = cyc.tilt * (iz >= 0 ? -1 : 1) + openSmooth * Math.cos(wavePhase) * 0.015;
+
+        p.position.set(ix * STEP, finalLift, iz * STEP);
+        p.rotation.set(finalTiltX, p.userData.baseRot + finalRot, finalTiltZ);
       }
 
-      // 2. Siklus mekanis utama untuk 2 palet parit cekung (tetap aktif & berpadu mulus dengan efek ketikan):
-      const rotVec = [0, 0];
+      // 2. ANIMASI 4 UBIN TENGAH (rata saat mobil lewat)
+      let bestSlab0 = { gx: 0.5 * STEP, y: 0, gz: -0.5 * STEP, w: 0, rot: 0 };
+      let bestSlab1 = { gx: -0.5 * STEP, y: 0, gz: -0.5 * STEP, w: 0, rot: 0 };
 
       for (const item of RING_PALLETS) {
-        const phase = (((carAngle - item.quadAngle) % TAU) + TAU) % TAU;
-        const winStart = 0.58 * Math.PI;
-        const winEnd = 1.30 * Math.PI;
         const pObj = pallets[item.key];
-        const uSlot = item.idx === 0 ? 'uSlab0' : 'uSlab1';
+        const { ix, iz } = pObj.userData;
+        const phase = (((carAngle - item.quadAngle) % TAU) + TAU) % TAU;
+        const cyc = hitungSiklusUbin(phase, 0.68 * Math.PI, 1.32 * Math.PI, 0.30);
 
-        if (phase > winStart && phase < winEnd) {
-          const u = (phase - winStart) / (winEnd - winStart);
+        const typeLift = openSmooth * 0.07;
+        const typeRot  = 0;
 
-          const liftProfile = smoothstep(0.0, 0.22, u) * (1.0 - smoothstep(0.78, 1.0, u));
-          const liftY = Math.max(pObj.position.y, liftProfile * 0.30 + openSmooth * 0.08);
+        const turun = smoothstep(item.idx * 0.07, 0.42 + item.idx * 0.07, dive) * 1.3;
+        const liftY = Math.max(cyc.lift, typeLift) - turun;
+        const rotY  = cyc.rot + typeRot;
+        const tiltX = cyc.tilt * item.tiltSignX;
+        const tiltZ = cyc.tilt * item.tiltSignZ;
 
-          let rot = 0;
-          if (u < 0.20) {
-            rot = 0;
-          } else if (u < 0.44) {
-            rot = smoothstep(0.20, 0.44, u) * Math.PI;
-          } else if (u < 0.58) {
-            rot = Math.PI;
-          } else if (u < 0.80) {
-            rot = Math.PI + smoothstep(0.58, 0.80, u) * Math.PI;
-          } else {
-            rot = TAU;
-          }
+        pObj.position.set(ix * STEP, liftY, iz * STEP);
+        pObj.rotation.set(tiltX, pObj.userData.baseRot + rotY, tiltZ);
 
-          const tilt = Math.sin(u * TAU) * liftProfile * 0.08;
-          animasikanPalet(item.key, liftY, rot, tilt * item.tiltSignX, tilt * item.tiltSignZ);
-          uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, Math.max(liftProfile * 1.30, openSmooth * 1.25));
-          rotVec[item.idx] = rot;
-        } else {
-          if (item.key === '0.5,-0.5') {
-            const baseStep = 0.095 + openSmooth * 0.16;
-            const liftY = Math.max(pObj.position.y, baseStep);
-            const rotOpen = openSmooth > 0.1 ? Math.sin(t * 2.6) * openSmooth * 0.35 : 0;
-            animasikanPalet(item.key, liftY, rotOpen, pObj.rotation.x, pObj.rotation.z);
-            uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, 0.22 + openSmooth * 1.10);
-            rotVec[item.idx] = rotOpen;
-          } else {
-            const liftY = Math.max(pObj.position.y, openSmooth * 0.24);
-            const rotOpen = openSmooth > 0.1 ? -Math.cos(t * 2.6) * openSmooth * 0.35 : 0;
-            animasikanPalet(item.key, liftY, rotOpen, pObj.rotation.x, pObj.rotation.z);
-            uniforms[uSlot].value.set(pObj.userData.gx, liftY, pObj.userData.gz, openSmooth * 1.15);
-            rotVec[item.idx] = rotOpen;
-          }
+        const glowW = Math.max(cyc.lift / 0.30 * 1.35, openSmooth * 1.15);
+        if (item.idx === 0 || (item.idx === 2 && liftY > bestSlab0.y)) {
+          bestSlab0 = { gx: pObj.position.x, y: liftY, gz: pObj.position.z, w: glowW, rot: rotY };
+        }
+        if (item.idx === 1 || (item.idx === 3 && liftY > bestSlab1.y)) {
+          bestSlab1 = { gx: pObj.position.x, y: liftY, gz: pObj.position.z, w: glowW, rot: rotY };
         }
       }
 
-      uniforms.uSlabRot.value.set(rotVec[0], rotVec[1]);
+      uniforms.uSlab0.value.set(bestSlab0.gx, bestSlab0.y, bestSlab0.gz, bestSlab0.w);
+      uniforms.uSlab1.value.set(bestSlab1.gx, bestSlab1.y, bestSlab1.gz, bestSlab1.w);
+      uniforms.uSlabRot.value.set(bestSlab0.rot, bestSlab1.rot);
 
+      // 3. MOBIL GT DI ATAS UBIN
+      const vibeStrength = Math.min(1.0, openSmooth * 0.75 + keyPulse * 0.65 + actionBurst * 0.85);
       const cxCar = Math.cos(carAngle) * R_ARC;
       const czCar = Math.sin(carAngle) * R_ARC;
-
       const curKey = `${cxCar >= 0 ? 0.5 : -0.5},${czCar >= 0 ? 0.5 : -0.5}`;
       const curPallet = pallets[curKey];
       const palletLift = curPallet ? curPallet.position.y : 0;
+      const palletTiltX = curPallet ? curPallet.rotation.x : 0;
+      const palletTiltZ = curPallet ? curPallet.rotation.z : 0;
 
-      mobil.position.set(cxCar, palletLift - GD + 0.02, czCar);
-      const tangentYaw = -carAngle - Math.PI / 2;
-      mobil.rotation.set(0, tangentYaw, 0.15);
+      // Getaran suspensi saat ada ketikan/aksi
+      const suspBounce = Math.sin(t * 32.0) * 0.045 * vibeStrength + Math.abs(Math.cos(t * 18.0)) * 0.07 * actionBurst;
+      const carY = palletLift - GD + 0.02 + suspBounce;
 
-      uniforms.uCarGroupPos.value.set(cxCar, palletLift - GD + 0.02, czCar);
+      // Drift ekor mobil ke luar tikungan saat getaran tinggi
+      const driftYaw = Math.sin(t * 14.0) * 0.16 * vibeStrength + openSmooth * 0.22;
+      const carPitch = palletTiltX * 0.85 + Math.sin(t * 24.0) * 0.08 * vibeStrength;
+      const carRoll  = 0.15 + palletTiltZ * 0.85 + Math.cos(t * 20.0) * 0.12 * vibeStrength;
+
+      mobil.position.set(cxCar, carY, czCar);
+      mobil.rotation.set(carPitch, -carAngle - Math.PI / 2 + driftYaw, carRoll);
+      uniforms.uCarGroupPos.value.set(cxCar, carY, czCar);
+
+      // Gelombang kejut neon di bawah roda mobil saat tombol dipencet / ketikan aktif
+      shockRing.position.set(cxCar, Math.max(0.02, carY + 0.02), czCar);
+      const pulseScale = 1.0 + ((t * 3.5) % 1.0) * (1.4 + vibeStrength * 1.8);
+      shockRing.scale.setScalar(pulseScale);
+      shockRing.visible = dive === 0;
+      shockRing.material.opacity = vibeStrength * (1.0 - ((t * 3.5) % 1.0)) * 0.75;
 
       for (const wMesh of mobil.userData.wheels) {
-        wMesh.rotation.z = -(t * 7.0 + extraCarPhase * 4.0);
+        wMesh.rotation.z = -(t * 7.0 + extraCarPhase * 6.5);
       }
 
+      // 4. KAMERA mengikuti mouse
       camera.position.set(
-        camBase.x + mouse.x * 0.65,
-        camBase.y - mouse.y * 0.40 + openSmooth * 0.25,
-        camBase.z + openSmooth * 0.20
+        THREE.MathUtils.lerp(camBase.x + mouse.x * 0.65, WORLD_POS.x, diveCam),
+        THREE.MathUtils.lerp(camBase.y - mouse.y * 0.40 + openSmooth * 0.25, -0.75, diveCam),
+        THREE.MathUtils.lerp(camBase.z + openSmooth * 0.20, WORLD_POS.z + 0.04, diveCam)
       );
-      camera.lookAt(lookTarget);
+      camera.lookAt(
+        THREE.MathUtils.lerp(lookTargetBase.x, WORLD_POS.x, diveCam),
+        THREE.MathUtils.lerp(lookTargetBase.y, -4, diveCam),
+        THREE.MathUtils.lerp(lookTargetBase.z, WORLD_POS.z, diveCam)
+      );
 
       renderer.render(scene, camera);
       raf = requestAnimationFrame(loop);

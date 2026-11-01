@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Struk from './Struk.jsx';
+import { buatGerbang } from '../dunia3d.js';
 
 export default function Keluar() {
   const [q, setQ] = useState('');
@@ -13,7 +14,15 @@ export default function Keluar() {
     api('/transaksi?status=masuk').then(setAktif).catch(() => {});
   };
 
-  useEffect(() => { muatAktif(); }, []);
+  const panggung = useRef(null);
+  const gerbang = useRef(null);
+
+  useEffect(() => {
+    muatAktif();
+    gerbang.current = buatGerbang(panggung.current, 'keluar');
+    gerbang.current?.papan('SIAP MELAYANI', 'Pilih kendaraan yang keluar');
+    return () => gerbang.current?.hapus();
+  }, []);
 
   const hitungDariKodeAtauPlat = async (nilaiCari) => {
     setMsg('');
@@ -23,7 +32,8 @@ export default function Keluar() {
       const { id_parkir } = await api('/transaksi/cari?q=' + encodeURIComponent(nilaiCari));
       const detail = await api(`/transaksi/${id_parkir}/hitung`);
       setHit(detail);
-      window.dispatchEvent(new CustomEvent('parkir:aksi', { detail: { aksi: 'hitung', id_parkir } }));
+      gerbang.current?.siapkan(aktif.find((t) => t.id_parkir === id_parkir)?.jenis_kendaraan);
+      gerbang.current?.papan(detail.plat_nomor, `${detail.durasi_jam} jam, Rp${Number(detail.biaya_total).toLocaleString('id-ID')}`);
     } catch (x) {
       setMsg(x.message);
     }
@@ -38,21 +48,22 @@ export default function Keluar() {
     try {
       const selesai = await api(`/transaksi/${hit.id_parkir}/keluar`, 'POST');
       setStruk(selesai);
+      gerbang.current?.papan('TERIMA KASIH', selesai.plat_nomor);
+      gerbang.current?.jalan();
       setHit(null);
       setQ('');
       muatAktif();
-      window.dispatchEvent(new CustomEvent('parkir:aksi', { detail: { aksi: 'keluar', id_parkir: selesai.id_parkir } }));
     } catch (x) {
       setMsg(x.message);
     }
   };
 
   return (
+    <>
+    <div className="panggung" ref={panggung} />
     <div className="panel-card">
-      <h3>📤 Check-Out & Pembayaran Parkir</h3>
-      <p style={{ fontSize: 13, color: '#524b70', marginTop: -8, marginBottom: 14 }}>
-        Ketik plat nomor / kode karcis, atau klik langsung salah satu kendaraan yang sedang parkir di bawah.
-      </p>
+      <h3>Kendaraan Keluar</h3>
+      <p className="keterangan">Ketik plat nomor atau kode karcis, atau pilih kendaraan di bawah.</p>
 
       <form onSubmit={cari} className="form-row">
         <input
@@ -65,22 +76,20 @@ export default function Keluar() {
       </form>
 
       {aktif.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#4c1d95', marginBottom: 6 }}>
-            Pilih Cepat Kendaraan Sedang Parkir ({aktif.length}):
-          </div>
+        <div style={{ marginTop: 16 }}>
+          <p className="judul-kecil">Sedang parkir ({aktif.length})</p>
           <div className="mini-chips">
             {aktif.map((t) => (
               <button
                 key={t.id_parkir}
                 type="button"
-                className="role-pill"
+                className="btn-ghost btn-xs"
                 onClick={() => {
                   setQ(t.plat_nomor);
                   hitungDariKodeAtauPlat(t.plat_nomor);
                 }}
               >
-                🚗 <b>{t.plat_nomor}</b> • Karcis #{t.id_parkir} ({t.nama_area})
+                <b>{t.plat_nomor}</b> #{t.id_parkir}
               </button>
             ))}
           </div>
@@ -88,12 +97,12 @@ export default function Keluar() {
       )}
 
       {hit && (
-        <div className="stat-banner">
-          Kendaraan <b>{hit.plat_nomor}</b> • Durasi <b>{hit.durasi_jam} jam</b> • Total Tagihan:{' '}
-          <b>Rp{Number(hit.biaya_total).toLocaleString('id-ID')}</b>{' '}
-          <button onClick={bayar} style={{ marginLeft: 12, background: '#f59e0b', color: '#16113a' }}>
-            Bayar & Selesaikan
-          </button>
+        <div className="tagihan">
+          <span>
+            <b>{hit.plat_nomor}</b>, {hit.durasi_jam} jam, total{' '}
+            <b>Rp{Number(hit.biaya_total).toLocaleString('id-ID')}</b>
+          </span>
+          <button onClick={bayar}>Bayar & Selesaikan</button>
         </div>
       )}
 
@@ -103,7 +112,8 @@ export default function Keluar() {
         </div>
       )}
 
-      {msg && <p style={{ color: '#e11d48', fontWeight: 700 }}>{msg}</p>}
+      {msg && <p className="pesan-error">{msg}</p>}
     </div>
+    </>
   );
 }

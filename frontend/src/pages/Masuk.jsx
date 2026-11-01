@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import Struk from './Struk.jsx';
+import { buatGerbang } from '../dunia3d.js';
 
 export default function Masuk() {
   const [areas, setAreas] = useState([]);
@@ -23,14 +24,32 @@ export default function Masuk() {
   useEffect(() => { load(); }, []);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
+  const panggung = useRef(null);
+  const gerbang = useRef(null);
+  const areaPilih = areas.find((a) => String(a.id_area) === String(f.id_area));
+
+  useEffect(() => {
+    gerbang.current = buatGerbang(panggung.current, 'masuk');
+    return () => gerbang.current?.hapus();
+  }, []);
+
+  useEffect(() => {
+    gerbang.current?.siapkan(f.jenis_kendaraan);
+  }, [f.jenis_kendaraan]);
+
+  useEffect(() => {
+    const sisa = areaPilih ? areaPilih.kapasitas - areaPilih.terisi : null;
+    gerbang.current?.papan(f.plat_nomor.toUpperCase() || 'SELAMAT DATANG', areaPilih ? (sisa > 0 ? `${areaPilih.nama_area}: ${sisa} tersedia` : `${areaPilih.nama_area} penuh`) : 'Pilih area parkir');
+  }, [f.plat_nomor, f.id_area, areas]);
+
   const submit = async (e) => {
     e.preventDefault();
     try {
       const r = await api('/transaksi/masuk', 'POST', f);
       setStruk(r);
+      gerbang.current?.jalan(() => gerbang.current?.siapkan(f.jenis_kendaraan));
       setMsg(`Kendaraan ${r.plat_nomor} berhasil masuk (Karcis #${r.id_parkir})`);
       setF((prev) => ({ ...prev, plat_nomor: '', warna: '', pemilik: '' }));
-      window.dispatchEvent(new CustomEvent('parkir:aksi', { detail: { aksi: 'masuk', plat: r.plat_nomor } }));
       load();
     } catch (x) {
       setMsg(x.message);
@@ -38,11 +57,10 @@ export default function Masuk() {
   };
 
   return (
+    <>
+    <div className="panggung" ref={panggung} />
     <div className="panel-card">
-      <h3>📥 Check-In Kendaraan Masuk</h3>
-      <p style={{ fontSize: 13, color: '#524b70', marginTop: -8, marginBottom: 14 }}>
-        Ketik plat nomor untuk membuka mekanisme palet 3D, atau klik kartu area di bawah untuk memilih lokasi parkir.
-      </p>
+      <h3>Kendaraan Masuk</h3>
 
       <form onSubmit={submit} className="form-row">
         <input
@@ -52,9 +70,9 @@ export default function Masuk() {
           required
         />
         <select value={f.jenis_kendaraan} onChange={set('jenis_kendaraan')}>
-          <option value="motor">🏍️ Motor</option>
-          <option value="mobil">🚗 Mobil</option>
-          <option value="lainnya">🚚 Lainnya / Truk</option>
+          <option value="motor">Motor</option>
+          <option value="mobil">Mobil</option>
+          <option value="lainnya">Lainnya / Truk</option>
         </select>
         <input placeholder="Warna Kendaraan" value={f.warna} onChange={set('warna')} />
         <input placeholder="Nama Pemilik" value={f.pemilik} onChange={set('pemilik')} />
@@ -67,7 +85,7 @@ export default function Masuk() {
           ))}
         </select>
         <button type="submit">Simpan & Cetak Karcis</button>
-        {msg && <b style={{ color: '#6d28d9', marginLeft: 8 }}>{msg}</b>}
+        {msg && <span className="pesan">{msg}</span>}
       </form>
 
       <div className="area-grid">
@@ -80,14 +98,13 @@ export default function Masuk() {
               className={`area-item ${terpilih ? 'area-item-active' : ''}`}
               onClick={() => {
                 setF({ ...f, id_area: String(a.id_area) });
-                window.dispatchEvent(new CustomEvent('parkir:aksi', { detail: { aksi: 'pilih-area', id: a.id_area } }));
               }}
               style={{ cursor: 'pointer' }}
               title="Klik untuk memilih area parkir ini"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700 }}>
-                <span>{terpilih ? '✓ ' : ''}{a.nama_area}</span>
-                <span style={{ color: '#7c3aed' }}>{a.terisi} / {a.kapasitas} slot</span>
+              <div className="area-judul">
+                <span>{a.nama_area}</span>
+                <span className="area-angka">{a.terisi}/{a.kapasitas}</span>
               </div>
               <div className="area-bar">
                 <div className="area-fill" style={{ width: `${pct}%` }} />
@@ -105,9 +122,7 @@ export default function Masuk() {
 
       {aktif.length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: 14, color: '#3b1d7a' }}>
-            🚗 Kendaraan Sedang Parkir Saat Ini ({aktif.length})
-          </h4>
+          <p className="judul-kecil">Sedang parkir ({aktif.length})</p>
           <table>
             <thead>
               <tr>
@@ -123,7 +138,7 @@ export default function Masuk() {
                 <tr key={t.id_parkir}>
                   <td><b>#{t.id_parkir}</b></td>
                   <td><b>{t.plat_nomor}</b></td>
-                  <td>{t.jenis_kendaraan.toUpperCase()}</td>
+                  <td>{t.jenis_kendaraan}</td>
                   <td>{t.nama_area}</td>
                   <td>{new Date(t.waktu_masuk).toLocaleString('id-ID')}</td>
                 </tr>
@@ -133,5 +148,6 @@ export default function Masuk() {
         </div>
       )}
     </div>
+    </>
   );
 }
